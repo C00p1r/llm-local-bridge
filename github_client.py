@@ -6,6 +6,8 @@ from typing import Dict, Any, List
 import urllib.request
 import urllib.error
 from config import GITHUB_TOKEN, WORKSPACE_DIR
+import subprocess
+
 
 GITHUB_API_BASE = "https://api.github.com"
 
@@ -140,6 +142,73 @@ async def push_workspace_to_repo(repo_name: str, branch: str = "main", commit_me
             data={"ref": f"refs/heads/{branch}", "sha": new_commit_sha}
         )
         return create_ref
+
+def _run_host_git(args: list[str], cwd: Path | str) -> Dict[str, Any]:
+    """在主機端執行 Git 原生指令（不受沙盒斷網限制）"""
+    try:
+        process = subprocess.run(
+            ["git"] + args,
+            cwd=str(cwd),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=60
+        )
+        combined_output = process.stdout + (f"\n[STDERR]\n{process.stderr}" if process.stderr else "")
+        return {
+            "status": "success" if process.returncode == 0 else "failed",
+            "output": combined_output.strip() or "[Empty Output]",
+            "exit_code": process.returncode
+        }
+    except FileNotFoundError:
+        return {
+            "status": "error",
+            "output": "[Host Error] 主機環境未安裝 Git 或未加入 PATH 環境變數",
+            "exit_code": -1
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "output": f"[Host Error] 執行 Git 指令失敗: {str(e)}",
+            "exit_code": -1
+        }
+
+def git_clone(repo_url: str, target_subfolder: str = "") -> Dict[str, Any]:
+    """將遠端倉庫 Clone 到主機工作區"""
+    base_dir = Path(WORKSPACE_DIR).resolve()
+    base_dir.mkdir(parents=True, exist_ok=True)
+    
+    args = ["clone", repo_url]
+    if target_subfolder:
+        args.append(target_subfolder)
+        
+    return _run_host_git(args, cwd=base_dir)
+
+def git_fetch(subfolder: str = "", remote: str = "origin") -> Dict[str, Any]:
+    """在主機工作區中執行 git fetch 同步遠端分支資訊"""
+    target_path = (Path(WORKSPACE_DIR) / subfolder).resolve()
+    if not target_path.exists():
+        return {"status": "error", "output": f"目錄不存在: {target_path}", "exit_code": -1}
+        
+    return _run_host_git(["fetch", remote], cwd=target_path)
+
+def git_pull(subfolder: str = "", remote: str = "origin", branch: str = "main", force_reset: bool = False) -> Dict[str, Any]:
+    """
+    在主機工作區中更新程式碼：
+    - 一般更新：git pull remote branch
+    - 強制對齊（避免分歧）：git fetch + git reset --hard
+    """
+    target_path = (Path(WORKSPACE_DIR) / subfolder).resolve()
+    if not target_path.exists():
+        return {"status": "error", "output": f"目錄不存在: {target_path}", "exit_code": -1}
+        
+    if force_reset:
+        fetch_res = _run_host_git(["fetch", remote, branch], cwd=target_path)
+        if fetch_res["status"] != "success":
+            return fetch_res
+        return _run_host_git(["reset", "--hard", f"{remote}/{branch}"], cwd=target_path)
+    
+    return _run_host_git(["pull", remote, branch], cwd=target_path)
 
 async def handle_github_action(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
     if action == "get_repo":

@@ -7,6 +7,7 @@ import executor
 import github_client
 import memory_manager
 from config import SESSION_TOKEN, ALLOWED_ORIGINS
+from github_client import git_clone, git_fetch, git_pull
 
 app = FastAPI(title="LLM Local Bridge API")
 
@@ -80,6 +81,30 @@ async def execute_tool(req: ExecuteRequest, token: str = Depends(verify_token)):
     except Exception as e:
         print(f"[Bridge] 執行錯誤: {e}")
         return {"status": "error", "output": f"[Bridge] 伺服器內部錯誤: {str(e)}", "exit_code": -1}
+
+
+
+class GitCloneRequest(BaseModel):
+    repo_url: str
+    target_subfolder: str = ""
+
+class GitSyncRequest(BaseModel):
+    subfolder: str = ""
+    remote: str = "origin"
+    branch: str = "main"
+    force_reset: bool = False
+
+@app.post("/git/clone")
+async def handle_git_clone(req: GitCloneRequest, authorized: bool = Depends(verify_token)):
+    return git_clone(req.repo_url, req.target_subfolder)
+
+@app.post("/git/fetch")
+async def handle_git_fetch(req: GitSyncRequest, authorized: bool = Depends(verify_token)):
+    return git_fetch(req.subfolder, req.remote)
+
+@app.post("/git/pull")
+async def handle_git_pull(req: GitSyncRequest, authorized: bool = Depends(verify_token)):
+    return git_pull(req.subfolder, req.remote, req.branch, req.force_reset)
 
 if __name__ == "__main__":
     print(f"[Bridge] 🚀 Server 啟動於 127.0.0.1:8000 (Token: {SESSION_TOKEN})")
