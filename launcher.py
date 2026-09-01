@@ -85,8 +85,7 @@ def run_guardian():
                 start_server()
             time.sleep(POLL_INTERVAL)
     except KeyboardInterrupt:
-        print("
-[Watcher] 收到中斷訊號，正在關閉伺服器...")
+        print("[Watcher] 收到中斷訊號，正在關閉伺服器...")
         if server_process:
             server_process.terminate()
             server_process.wait()
