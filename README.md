@@ -167,10 +167,16 @@ uvicorn server:app --host 127.0.0.1 --port 8000 --reload
 
 ---
 
-## 已知問題與待處理事項 (Known Issues & TODO)
+## 踩坑紀錄與已解決問題 (Troubleshooting & Known Issues)
 
-### 1. 多行指令解析與字串轉義問題 (Multi-line Command Parsing)
-* **現象**：在 `execute_command` 傳入包含換行符號（`\n`）、特殊引號或複雜管道指令時，經過 JSON 序列化、Tampermonkey 解析、Shell Interpreter 與 Inline Script 的多層轉義，容易發生引號逃逸失敗或語法截斷錯誤（例如 `syntax error near unexpected token`）。
-* **目前緩解方案**：
-  * 凡涉及建立、覆寫或修改程式碼與檔案內容，一律強制使用 `write_file` 工具，嚴禁使用 `echo ... > file` 或 `cat <<EOF` 等多行 Shell 傳遞方式。
-  * 複雜的本機測試腳本建議先透過 `write_file` 寫成 `.py` 或 `.sh` 檔案後，再使用 `execute_command` 單行執行該檔案。
+| # | 類別 | 遭遇問題（坑點） | 根本原因 | 解決方案 / 最佳實踐 |
+| :--- | :--- | :--- | :--- | :--- |
+| **01** | **安全防護** | 宿主機路徑穿越風險 | LLM 可透過 `cat ../` 或相對路徑存取沙盒外敏感檔案 | 工作區全面以 Docker 沙盒隔離，路徑鎖定於 `/workspace`，後端寫檔實作路徑防穿越校驗 |
+| **02** | **前端捕捉** | 連發指令漏抓第二條訊息 | 去重比對誤判、`isProcessing` 狀態未即時銜接 | 於 DOM 節點打上實體標記（`dataset.bridgeExecuted`）並加強輪詢防抖機制 |
+| **03** | **前端效能** | Console 狂跳 JSON 解析 Warning | 解析失敗節點未打已讀標記，導致輪詢重複解析拋錯 | 加入「失敗即標記」機制，當次失敗直接略過，終結死循環報錯 |
+| **04** | **字串傳輸** | Base64 寫檔失敗與 JSON 語法崩潰 | HTML/JS 包含大量引號、換行與 Markdown 轉義，破壞 Shell 與 JSON 結構 | 嚴禁在 Bash 硬塞多行程式碼，全面改由獨立 `write_file` API 傳遞內容 |
+| **05** | **驗證通訊** | 後端重啟後 Tampermonkey 出現 `403 Forbidden` | 伺服器重啟預設動態生成全新 `SESSION_TOKEN` | 同步更新 Tampermonkey 的 Token；或於 `.env` 設定靜態 Token |
+| **06** | **環境隔離** | 沙盒內無法執行 `git pull / push` | Docker 沙盒採 `--network none` 斷網且缺少 Host 憑證 | 將 Git 操作抽出為 `github_action`，改由主機端連網代管執行 |
+| **07** | **版本控制** | Git CLI 拉取失敗或非 Git 目錄 | 本機未安裝 Git、未加 PATH 或工作區未初始化 `.git` | 實作雙軌制：優先呼叫本機 Git CLI，失敗自動降級為 GitHub REST API 檔案樹同步 |
+| **08** | **檔案快取** | 程式碼修改後伺服器仍回傳「不支援此 Action」 | Python 記憶體快取舊模組，或工作區路徑層級寫錯位置 | 啟動加上 `--reload`；確認寫入路徑為當前執行的模組檔案 |
+| **09** | **文件維護** | 更新 `README.md` 時誤刪重要章節 | 重寫文件時未先對照舊有章節結構 | 修改文件採「先讀取檢視、增量補充」原則，保留已知問題與歷史紀錄 |
