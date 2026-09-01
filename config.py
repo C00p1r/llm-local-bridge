@@ -2,7 +2,7 @@ import os
 import secrets
 from pathlib import Path
 
-# 1. 嘗試載入 .env（若未安裝 python-dotenv 則使用純 Python 解析回退）
+# 1. 嘗試載入 .env
 current_dir = Path(__file__).resolve().parent
 parent_dir = current_dir.parent
 
@@ -31,8 +31,13 @@ except ModuleNotFoundError:
             except Exception:
                 pass
 
-# 2. 工作區路徑設定（以專案根目錄為基準）
-WORKSPACE_DIR = parent_dir
+# 2. 工作區路徑設定（優先讀取 WORKSPACE_DIR 環境變數，預設為 current_dir / "workspace"）
+custom_workspace = os.getenv("WORKSPACE_DIR")
+if custom_workspace:
+    WORKSPACE_DIR = Path(custom_workspace).resolve()
+else:
+    WORKSPACE_DIR = (current_dir / "workspace").resolve()
+
 WORKSPACE_DIR.mkdir(parents=True, exist_ok=True)
 
 # 3. Session Token：優先採用 .env 設定，未設定則自動生成 16 bytes 安全 Token
