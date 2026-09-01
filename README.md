@@ -101,3 +101,10 @@ uvicorn server:app --host 127.0.0.1 --port 8000
 4. **GitHub 整合 (GitHub Integration)**
    - 內建 Git/GitHub 相關工作流程與授權支援（如自動 Clone、Commit、Push 與 PR 建立）。
    - 支援讀取 GitHub Issue/Repo 資訊，提升多專案協同開發體驗。
+
+## 待掦捡受待駧更新 (Known Issues & TODO)
+
+**1. 多行指令解析透成同步失敗detection Issue**
+- **現象**：在 `system_executor` 域地送入含轉行登號（`\n`)的多行 Shell / Python 指令時，底屋的 ═ JSON ⛐ Shell Interpreter ⛐ Inline Script 多層轉義容易進成引號遥澤或語法截断（如  `{syntax: "unexpected ("'}`)。
+- **9bcy�'�)����K��*y�b����&�`o�7�r����ᕍ�ѕ}����������ⷖ
+Ϧk�����ա����͍ɥ�Ӿ�3��3�VӚ���/��ǒ��6�O����R����ɥѕ}ݽɭ�����}�������"X�	�͔�Ё�����䁕���������ˢ�3�������3���?�����ۖ��bO�ʋ�ꓚ�[�(
