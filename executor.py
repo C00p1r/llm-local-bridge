@@ -64,3 +64,14 @@ async def run_shell_command(command: str, timeout: int = DEFAULT_TIMEOUT_SEC) ->
         }
     except Exception as e:
         return {"status": "error", "output": str(e), "exit_code": -1}
+def write_workspace_file(path: str, content: str) -> dict:
+    try:
+        target_path = (Path(WORKSPACE_DIR) / path).resolve()
+        workspace_path = Path(WORKSPACE_DIR).resolve()
+        if not str(target_path).startswith(str(workspace_path)):
+            return {"status": "error", "output": "[Bridge] Path out of workspace", "exit_code": -1}
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_text(content, encoding='utf-8')
+        return {"status": "success", "output": f\"File {path} written successfully\", "exit_code": 0}
+    except Exception as e:
+        return {"status": "error", "output": f\"[Bridge] Failed to write file: {str(e)}\", "exit_code": -1}

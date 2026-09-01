@@ -42,9 +42,14 @@ def get_local_head_sha() -> str | None:
         return None
 
 def update_repo() -> bool:
-    print("[Watcher] 偵測到遠端新版本，開始執行 git pull...")
-    res = subprocess.run(["git", "pull", "--ff-only"], cwd=str(BASE_DIR))
-    return res.returncode == 0
+    print("[Watcher] 偵測到遠端新版本，執行強制拉取並對齊遠端 (fetch + reset --hard)...")
+    fetch_res = subprocess.run(["git", "fetch", "origin", BRANCH], cwd=str(BASE_DIR))
+    if fetch_res.returncode != 0:
+        print("[Watcher] git fetch 失敗")
+        return False
+    
+    reset_res = subprocess.run(["git", "reset", "--hard", f"origin/{BRANCH}"], cwd=str(BASE_DIR))
+    return reset_res.returncode == 0
 
 def run_guardian():
     server_process = None
@@ -58,6 +63,7 @@ def run_guardian():
 
     try:
         while True:
+            time.sleep(POLL_INTERVAL)
             local_sha = get_local_head_sha()
             remote_sha = get_remote_head_sha()
 
@@ -78,9 +84,9 @@ def run_guardian():
                     print("[Watcher] 更新失敗，嘗試使用現有代碼重啟...")
                 
                 start_server()
-            time.sleep(POLL_INTERVAL)
     except KeyboardInterrupt:
-        print("\n[Watcher] 收到中斷訊號，正在關閉伺服器...")
+        print("
+[Watcher] 收到中斷訊號，正在關閉伺服器...")
         if server_process:
             server_process.terminate()
             server_process.wait()

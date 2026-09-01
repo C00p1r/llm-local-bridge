@@ -1,6 +1,4 @@
 import uvicorn
-import subprocess
-from pathlib import Path
 from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -9,9 +7,6 @@ import executor
 import github_client
 import memory_manager
 from config import SESSION_TOKEN, ALLOWED_ORIGINS
-
-BRIDGE_VERSION = "1.1.0-gitops"
-BASE_DIR = Path(__file__).resolve().parent
 
 app = FastAPI(title="LLM Local Bridge API")
 
@@ -35,27 +30,9 @@ async def verify_token(authorization: Optional[str] = Header(None)):
         raise HTTPException(status_code=403, detail="[Bridge] Session Token 不正確")
     return token
 
-def get_current_git_commit() -> str:
-    try:
-        res = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=str(BASE_DIR),
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        return res.stdout.strip()
-    except Exception:
-        return "unknown"
-
 @app.get("/health")
 async def health_check():
-    return {
-        "status": "ok",
-        "message": "[Bridge] 伺服器運行正常",
-        "version": BRIDGE_VERSION,
-        "commit": get_current_git_commit()
-    }
+    return {"status": "ok", "message": "[Bridge] 伺服器運行正常"}
 
 @app.get("/context")
 async def get_context(token: str = Depends(verify_token)):
@@ -105,6 +82,6 @@ async def execute_tool(req: ExecuteRequest, token: str = Depends(verify_token)):
         return {"status": "error", "output": f"[Bridge] 伺服器內部錯誤: {str(e)}", "exit_code": -1}
 
 if __name__ == "__main__":
-    print(f"[Bridge] 🚀 Server v{BRIDGE_VERSION} ({get_current_git_commit()}) 啟動於 127.0.0.1:8000 (Token: {SESSION_TOKEN})")
+    print(f"[Bridge] 🚀 Server 啟動於 127.0.0.1:8000 (Token: {SESSION_TOKEN})")
     memory_manager.capture_snapshot()
     uvicorn.run(app, host="127.0.0.1", port=8000)

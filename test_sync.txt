@@ -1,3 +1,0 @@
-# Test Auto Pull
-This is a test file to verify the watcher daemon auto-pull mechanism.
-Timestamp: 2026-09-01T23:04:52+08:00
