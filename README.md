@@ -164,3 +164,13 @@ uvicorn server:app --host 127.0.0.1 --port 8000 --reload
 4. **自主 Agent 迴圈與提示工程 (Autonomous Behavior & Context)**
    - [ ] 持續精煉 System Prompt，維持主動執行原則（嚴禁要求使用者手動複製貼上）。
    - [ ] 自動修剪過長工具輸出，防止上下文長度超限與記憶體浪費。
+
+---
+
+## 已知問題與待處理事項 (Known Issues & TODO)
+
+### 1. 多行指令解析與字串轉義問題 (Multi-line Command Parsing)
+* **現象**：在 `execute_command` 傳入包含換行符號（`\n`）、特殊引號或複雜管道指令時，經過 JSON 序列化、Tampermonkey 解析、Shell Interpreter 與 Inline Script 的多層轉義，容易發生引號逃逸失敗或語法截斷錯誤（例如 `syntax error near unexpected token`）。
+* **目前緩解方案**：
+  * 凡涉及建立、覆寫或修改程式碼與檔案內容，一律強制使用 `write_file` 工具，嚴禁使用 `echo ... > file` 或 `cat <<EOF` 等多行 Shell 傳遞方式。
+  * 複雜的本機測試腳本建議先透過 `write_file` 寫成 `.py` 或 `.sh` 檔案後，再使用 `execute_command` 單行執行該檔案。
