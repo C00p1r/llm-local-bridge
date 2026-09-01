@@ -58,7 +58,6 @@ def run_guardian():
 
     try:
         while True:
-            time.sleep(POLL_INTERVAL)
             local_sha = get_local_head_sha()
             remote_sha = get_remote_head_sha()
 
@@ -79,6 +78,7 @@ def run_guardian():
                     print("[Watcher] 更新失敗，嘗試使用現有代碼重啟...")
                 
                 start_server()
+            time.sleep(POLL_INTERVAL)
     except KeyboardInterrupt:
         print("\n[Watcher] 收到中斷訊號，正在關閉伺服器...")
         if server_process:
