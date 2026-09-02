@@ -71,7 +71,8 @@ def write_workspace_file(path: str, content: str) -> dict:
         if not str(target_path).startswith(str(workspace_path)):
             return {"status": "error", "output": "[Bridge] Path out of workspace", "exit_code": -1}
         target_path.parent.mkdir(parents=True, exist_ok=True)
-        target_path.write_text(content, encoding='utf-8')
+        normalized_content = content.replace("\r\n", "\n").replace("\r", "\n")
+        target_path.write_text(normalized_content, encoding='utf-8', newline='\n')
         return {"status": "success", "output": f"File {path} written successfully", "exit_code": 0}
     except Exception as e:
         return {"status": "error", "output": f"[Bridge] Failed to write file: {str(e)}", "exit_code": -1}
@@ -79,6 +80,7 @@ def write_workspace_file(path: str, content: str) -> dict:
 async def run_transient_script(code: str, language: str = "python", timeout: int = DEFAULT_TIMEOUT_SEC) -> dict:
     """
     執行暫存腳本：支援 python、bash、sh 等直譯器，沙盒內執行完畢後確保清理。
+    統一換行符為 \n，防止 Windows CRLF 導致容器內 bash 執行失敗。
     """
     lang_clean = language.lower().strip()
     ext_map = {
@@ -95,7 +97,8 @@ async def run_transient_script(code: str, language: str = "python", timeout: int
     temp_file_path = workspace_path / temp_filename
 
     try:
-        temp_file_path.write_text(code, encoding="utf-8")
+        normalized_code = code.replace("\r\n", "\n").replace("\r", "\n")
+        temp_file_path.write_text(normalized_code, encoding="utf-8", newline='\n')
         cmd = f"{runner} {temp_filename}"
         return await run_shell_command(cmd, timeout=timeout)
     except Exception as e:
