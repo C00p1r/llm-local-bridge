@@ -183,3 +183,6 @@ uvicorn server:app --host 127.0.0.1 --port 8000 --reload
 | **05** | **跨平台相容** | Windows 執行 Shell 出現 `$'\r'` 錯誤 | Windows 系統預設輸出 CRLF (`\r\n`)，容器內的 Linux Bash 解析時會把 `\r` 當成檔名一部分 | 在後端 `write_workspace_file` 與 `run_transient_script` 實作自動正規化，強制替換為 LF (`\n`) |
 | **06** | **對話延遲** | 執行臨時除錯腳本需 3 輪對話 | 舊架構需手動歷經「寫入 $\to$ 執行 $\to$ 刪除」三次請求回傳 | 引入 `run_script` 暫存直譯器與 Batch Array 批次執行，縮短 70% 延遲 |
 | **07** | **限流防護** | Gemini 出現 1095 錯誤與頻繁限流 | 快速連續回傳觸發對話歷史膨脹與前端 DOM 連續送出 | 加入 1800ms 冷卻防護，並以批次打包減少對話輪次 |
+| **08** | **Git 結構相容** | `github_action` 參數巢狀層級過深 | LLM 容易遺漏或混淆外層 parameters 與內層 params 欄位結構 | 後端支援參數扁平化解析（Flat Payload 相容），直接讀取第一層 parameters |
+| **09** | **遠端同步** | GitHub Push 發生 non-fast-forward 或憑證衝突 | 本機工作區與遠端 Commit 樹分岔，或 subfolder 路徑對映錯誤 | 於 Host 端加入強制重設與自動 Git pull/rebase 策略，並在 subfolder 精確隔離專案檔案 |
+| **10** | **局部編輯** | 修改現有檔案全量覆寫易遺漏程式碼 | `write_file` 重寫數百行檔案易造成 Token 浪費與上下文截斷損毀 | 實作 `replace_content` 搭配嚴格唯一性（Strict Uniqueness）驗證與換行符正規化 |
