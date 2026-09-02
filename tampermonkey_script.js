@@ -128,7 +128,6 @@
     let lastPromptDismissTime = 0;
     let lastExecutionTime = 0;
 
-    // 指標統計資料結構
     function getMetrics() {
         return GM_getValue('tool_call_metrics', { total: 0, success: 0, failed: 0 });
     }
@@ -432,7 +431,6 @@
         return null;
     }
 
-    // 輪詢間隔調升至 1200ms，加入最後執行冷卻防護（避免連續觸發 Gemini 1095 限流）
     setInterval(async () => {
         const now = Date.now();
         if (isExecuting || isStreaming() || (now - lastExecutionTime < 1800)) return;
