@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         LLM Local Bridge Agent (v4.7 - Guard, Metrics & Strict Protocol)
+// @name         LLM Local Bridge Agent (v4.7.1 - Guard, Metrics & Strict Protocol)
 // @namespace    https://local.bridge/
-// @version      4.7
+// @version      4.7.1
 // @description  LLM Local Bridge with tool metrics dashboard, strict CLI protocol, and unescape support
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
@@ -31,7 +31,7 @@
     window.__llm_local_bridge_loaded__ = true;
 
     console.log(
-        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.7 (Guard, Metrics & Strict Protocol)',
+        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.7.1 (Guard, Metrics & Strict Protocol)',
         'color:#22c55e;font-weight:bold;font-size:14px;'
     );
 
@@ -42,7 +42,7 @@
 1. 主動執行，嚴禁被動：嚴禁請使用者「手動修改」、「手動執行指令」或「自行複製貼上」。所有操作必須由你主動輸出 tool_call 區塊完成。
 2. 工具選擇與語法鐵律（CRITICAL RULES - 違反將導致解析失敗）：
    - 建立與修改檔案一律使用 write_file：嚴禁在 execute_command 內使用 \`cat << 'EOF'\`、\`echo "..." >\` 或 \`python3 -c "..."\` 來生成/修改檔案或腳本。任何超過 2 行的程式碼、包含多引號、括號或多行的內容，必須使用 write_file 寫入檔案。
-   - execute_command 僅限執行短指令：僅用於執行現有檔案或常用指令（如 \`python3 test.py\`、\`npm test\`）。嚴禁在 execute_command 中嵌入多行帶引號腳本，因為 Docker 底層外層 Shell 解析會崩潰（Syntax error: word unexpected）。
+   - execute_command 僅限執行短指令：僅用於執行現有檔案或常用指令（如 \`python3 test.py\`、\`npm test\`）。嚴禁在 execute_command 中嵌入多行帶引號腳本，因為底層 Shell 解析會崩潰（Syntax error: word unexpected）。
    - 執行臨時腳本的兩步標準路徑：先用 write_file 寫入 \`temp_runner.py\`，再用 execute_command 執行並清理（如 \`python3 temp_runner.py && rm temp_runner.py\`）。
 3. 工具呼叫規範：操作環境時僅輸出 tool_call 區塊，輸出後立刻停止生成，等待 [TOOL_RESULT]。
 
@@ -126,6 +126,7 @@
     let isNewChat = true;
     let isPromptingToken = false;
     let lastPromptDismissTime = 0;
+    let lastExecutionTime = 0;
 
     // 指標統計資料結構
     function getMetrics() {
@@ -311,7 +312,7 @@
         }
 
         inputEl.dispatchEvent(new Event('input', { bubbles: true }));
-        await new Promise((r) => setTimeout(r, 400));
+        await new Promise((r) => setTimeout(r, 500));
 
         const btn = isChatGPT
             ? document.querySelector('button[data-testid="send-button"], button[aria-label="Send prompt"]')
@@ -321,7 +322,7 @@
 
         btn.click();
         console.log('[Bridge] 送出訊息');
-        await new Promise((r) => setTimeout(r, 1200));
+        await new Promise((r) => setTimeout(r, 1500));
         return true;
     }
 
@@ -329,18 +330,14 @@
         if (!str) return '';
         return str
             .replace(/\\"/g, '"')
-            .replace(/\\
-/g, '\
-')
-            .replace(/\\/g, '\')
-            .replace(/\\	/g, '\	')
+            .replace(/\\r/g, '\r')
+            .replace(/\\n/g, '\n')
+            .replace(/\\t/g, '\t')
             .replace(/\\\\/g, '\\');
     }
 
     function parseMultiLineJson(rawText) {
-        const blockMatch = rawText.match(/```(?:tool_call|bridge):([a-zA-Z0-9_-]+)\s*\
-([\s\S]*?)\
-```/);
+        const blockMatch = rawText.match(/```(?:tool_call|bridge):([a-zA-Z0-9_-]+)\s*\n([\s\S]*?)\n```/);
         if (blockMatch) {
             const action = blockMatch[1];
             const rawBody = blockMatch[2].trim();
@@ -348,8 +345,7 @@
                 return { tool: 'execute_command', parameters: { command: rawBody } };
             }
             if (action === 'write_file') {
-                const firstNewline = rawBody.indexOf('\
-');
+                const firstNewline = rawBody.indexOf('\n');
                 const path = rawBody.substring(0, firstNewline).replace(/^path:\s*/i, '').trim();
                 const content = rawBody.substring(firstNewline + 1);
                 return { tool: 'write_file', parameters: { path, content } };
@@ -372,9 +368,7 @@
 
         try {
             const sanitized = candidate.replace(/"(?:[^"\\]|\\.)*"/gs, (match) => {
-                return match.replace(/\
-/g, '\\
-').replace(/\	/g, '\\	');
+                return match.replace(/\r/g, '\\r').replace(/\n/g, '\\n').replace(/\t/g, '\\t');
             });
             return JSON.parse(sanitized);
         } catch (e) {}
@@ -438,8 +432,10 @@
         return null;
     }
 
+    // 輪詢間隔調升至 1200ms，加入最後執行冷卻防護（避免連續觸發 Gemini 1095 限流）
     setInterval(async () => {
-        if (isExecuting || isStreaming()) return;
+        const now = Date.now();
+        if (isExecuting || isStreaming() || (now - lastExecutionTime < 1800)) return;
         createMetricsUI();
 
         const target = getNextToolCall();
@@ -453,23 +449,18 @@
             const isSuccess = (res && res.status === 'success');
             recordMetric(isSuccess);
 
-            const reply = `[TOOL_RESULT]\
-\`\`\`json\
-${JSON.stringify(res, null, 2)}\
-\`\`\``;
+            const reply = `[TOOL_RESULT]\n\`\`\`json\n${JSON.stringify(res, null, 2)}\n\`\`\``;
             await submitToLLM(reply);
         } catch (err) {
             console.error('[Bridge] Tool 執行失敗:', err);
             recordMetric(false);
-            const errReply = `[TOOL_RESULT]\
-\`\`\`json\
-${JSON.stringify({ status: 'error', output: String(err) }, null, 2)}\
-\`\`\``;
+            const errReply = `[TOOL_RESULT]\n\`\`\`json\n${JSON.stringify({ status: 'error', output: String(err) }, null, 2)}\n\`\`\``;
             await submitToLLM(errReply);
         } finally {
+            lastExecutionTime = Date.now();
             isExecuting = false;
         }
-    }, 700);
+    }, 1200);
 
     async function handleUserSend(e) {
         if (!isNewChat) return;
@@ -491,11 +482,7 @@ ${JSON.stringify({ status: 'error', output: String(err) }, null, 2)}\
             console.log('[Bridge] 正在取得工作區快照並注入 Prompt...');
 
             const memoryContext = await fetchContextPrompt();
-            const fullPrompt = `${BASE_SYSTEM_PROMPT}\
-${memoryContext}\
----\
-使用者的輸入如下：\
-${val.trim()}`;
+            const fullPrompt = `${BASE_SYSTEM_PROMPT}\n${memoryContext}\n---\n使用者的輸入如下：\n${val.trim()}`;
 
             await submitToLLM(fullPrompt);
         }
