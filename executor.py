@@ -1,4 +1,5 @@
 import asyncio
+import uuid
 from pathlib import Path
 from config import WORKSPACE_DIR, MAX_OUTPUT_CHARS, DEFAULT_TIMEOUT_SEC
 
@@ -64,6 +65,7 @@ async def run_shell_command(command: str, timeout: int = DEFAULT_TIMEOUT_SEC) ->
         }
     except Exception as e:
         return {"status": "error", "output": str(e), "exit_code": -1}
+
 def write_workspace_file(path: str, content: str) -> dict:
     try:
         target_path = (Path(WORKSPACE_DIR) / path).resolve()
@@ -75,3 +77,26 @@ def write_workspace_file(path: str, content: str) -> dict:
         return {"status": "success", "output": f"File {path} written successfully", "exit_code": 0}
     except Exception as e:
         return {"status": "error", "output": f"[Bridge] Failed to write file: {str(e)}", "exit_code": -1}
+
+async def run_transient_script(code: str, language: str = "python", timeout: int = DEFAULT_TIMEOUT_SEC) -> dict:
+    """
+    複合型指令：接收原始碼，於工作區自動寫入暫存檔執行，並保證在 finally 區塊刪除暫存檔。
+    """
+    workspace_path = Path(WORKSPACE_DIR).resolve()
+    ext = ".py" if language == "python" else ".sh"
+    temp_filename = f".temp_{uuid.uuid4().hex[:8]}{ext}"
+    temp_file_path = workspace_path / temp_filename
+
+    try:
+        temp_file_path.write_text(code, encoding="utf-8")
+        cmd = f"python {temp_filename}" if language == "python" else f"sh {temp_filename}"
+        result = await run_shell_command(cmd, timeout=timeout)
+        return result
+    except Exception as e:
+        return {"status": "error", "output": f"[Bridge] 暫存腳本執行異常: {str(e)}", "exit_code": -1}
+    finally:
+        try:
+            if temp_file_path.exists():
+                temp_file_path.unlink()
+        except Exception:
+            pass

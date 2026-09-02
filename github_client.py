@@ -109,7 +109,8 @@ async def push_workspace_to_github(repo: str, branch: str = "main", message: str
         "Content-Type": "application/json"
     }
     base_url = f"https://api.github.com/repos/{repo}"
-    target_dir = (WORKSPACE_DIR / subfolder).resolve() if subfolder else WORKSPACE_DIR
+    base_proj_dir = Path(__file__).parent.resolve()
+    target_dir = (base_proj_dir / subfolder).resolve() if subfolder else base_proj_dir
     if not target_dir.exists():
         return {"status": "error", "output": f"指定的 subfolder 不存在: {target_dir}", "exit_code": -1}
 
@@ -125,7 +126,7 @@ async def push_workspace_to_github(repo: str, branch: str = "main", message: str
 
     tree_items = []
     for root, dirs, files in os.walk(target_dir):
-        dirs[:] = [d for d in dirs if d not in {".git", "__pycache__", "node_modules", ".venv", "venv"}]
+        dirs[:] = [d for d in dirs if d not in {".git", "__pycache__", "node_modules", ".venv", "venv", "workspace"}]
         for file in files:
             if file.startswith(".bridge_memory"):
                 continue
@@ -140,7 +141,7 @@ async def push_workspace_to_github(repo: str, branch: str = "main", message: str
     if not tree_items:
         return {"status": "error", "output": "沒有發現可推送的檔案", "exit_code": -1}
 
-    tree_res = _github_api_request("POST", f"{base_url}/git/trees", headers, payload={"base_tree": base_tree_sha, "tree": tree_items})
+    tree_res = _github_api_request("POST", f"{base_url}/git/trees", headers, payload={"tree": tree_items})
     if tree_res.get("error") or tree_res["status_code"] != 201:
         return {"status": "error", "output": f"建立 Tree 失敗: {tree_res['status_code']} {tree_res['raw']}", "exit_code": tree_res["status_code"]}
     new_tree_sha = tree_res["data"]["sha"]

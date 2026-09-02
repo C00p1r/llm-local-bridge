@@ -3,7 +3,7 @@ import subprocess
 from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Union
 import executor
 import github_client
 import memory_manager
@@ -70,43 +70,89 @@ async def get_context(token: str = Depends(verify_token)):
         "context_prompt": prompt_text
     }
 
-@app.post("/execute")
-async def execute_tool(req: ExecuteRequest, token: str = Depends(verify_token)):
-    tool_name = req.tool
-    params = req.parameters or {}
-    print(f"[Bridge] 收到執行請求: {tool_name}")
+async def _execute_single_tool(tool_name: str, params: Dict[str, Any]) -> dict:
+    if tool_name == "execute_command":
+        cmd = params.get("command", "")
+        timeout = params.get("timeout", 30)
+        return await executor.run_shell_command(cmd, timeout=timeout)
 
-    try:
-        if tool_name == "execute_command":
-            cmd = params.get("command", "")
-            timeout = params.get("timeout", 30)
-            result = await executor.run_shell_command(cmd, timeout=timeout)
-            return result
+    elif tool_name == "run_script":
+        code = params.get("code", "")
+        language = params.get("language", "python")
+        timeout = params.get("timeout", 30)
+        res = await executor.run_transient_script(code=code, language=language, timeout=timeout)
+        memory_manager.capture_snapshot()
+        return res
 
-        elif tool_name == "write_file":
-            path = params.get("path", "")
-            content = params.get("content", "")
-            result = executor.write_workspace_file(path, content)
-            memory_manager.capture_snapshot()
-            return result
+    elif tool_name == "write_file":
+        path = params.get("path", "")
+        content = params.get("content", "")
+        res = executor.write_workspace_file(path, content)
+        memory_manager.capture_snapshot()
+        return res
 
-        elif tool_name == "github_action":
-            action = params.get("action", "")
-            # 自動雙軌相容：若有巢狀 params 則提取，否則以扁平 parameters 作為參數字典
-            raw_sub = params.get("params")
-            if isinstance(raw_sub, dict):
-                sub_params = raw_sub
-            else:
-                sub_params = {k: v for k, v in params.items() if k != "action"}
-            result = await github_client.handle_github_action(action, sub_params)
-            return result
-
-        elif tool_name == "capture_memory":
-            snapshot = memory_manager.capture_snapshot()
-            return {"status": "success", "output": "專案架構快照已更新", "snapshot": snapshot}
-
+    elif tool_name == "github_action":
+        action = params.get("action", "")
+        raw_sub = params.get("params")
+        if isinstance(raw_sub, dict):
+            sub_params = raw_sub
         else:
-            return {"status": "error", "output": f"[Bridge] 未知的工具名稱: {tool_name}", "exit_code": -1}
+            sub_params = {k: v for k, v in params.items() if k != "action"}
+        return await github_client.handle_github_action(action, sub_params)
+
+    elif tool_name == "capture_memory":
+        snapshot = memory_manager.capture_snapshot()
+        return {"status": "success", "output": "專案架構快照已更新", "snapshot": snapshot}
+
+    else:
+        return {"status": "error", "output": f"[Bridge] 未知的工具名稱: {tool_name}", "exit_code": -1}
+
+@app.post("/execute")
+async def execute_tool(req: Union[ExecuteRequest, List[ExecuteRequest]], token: str = Depends(verify_token)):
+    try:
+        # 支援單一指令請求
+        if isinstance(req, ExecuteRequest):
+            tool_name = req.tool
+            params = req.parameters or {}
+            print(f"[Bridge] 收到單一執行請求: {tool_name}")
+            return await _execute_single_tool(tool_name, params)
+
+        # 支援批次陣列請求 (Fail-Fast pipeline)
+        if isinstance(req, list):
+            print(f"[Bridge] 收到批次指令請求，共 {len(req)} 項")
+            batch_results = []
+            for idx, item in enumerate(req):
+                tool_name = item.tool
+                params = item.parameters or {}
+                print(f"[Bridge] 執行批次步驟 [{idx + 1}/{len(req)}]: {tool_name}")
+                res = await _execute_single_tool(tool_name, params)
+                batch_results.append({
+                    "step": idx + 1,
+                    "tool": tool_name,
+                    "result": res
+                })
+
+                # Fail-Fast 中斷檢查
+                status = res.get("status")
+                exit_code = res.get("exit_code", 0)
+                if status not in ["success", "ok"] or exit_code != 0:
+                    print(f"[Bridge] 批次步驟 [{idx + 1}] 失敗，中斷後續執行。")
+                    return {
+                        "status": "failed",
+                        "interrupted_at": idx + 1,
+                        "total_steps": len(req),
+                        "batch_results": batch_results,
+                        "output": f"第 {idx + 1} 步執行失敗 ({tool_name})，已中止後續指令。",
+                        "exit_code": exit_code if exit_code != 0 else -1
+                    }
+
+            return {
+                "status": "success",
+                "total_steps": len(req),
+                "batch_results": batch_results,
+                "output": f"全部 {len(req)} 項批次指令順利執行完成。",
+                "exit_code": 0
+            }
 
     except Exception as e:
         print(f"[Bridge] 執行錯誤: {e}")
