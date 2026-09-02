@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         LLM Local Bridge Agent (v4.5 - Robust Guard & Anti-reprompt)
+// @name         LLM Local Bridge Agent (v4.7 - Guard, Metrics & Strict Protocol)
 // @namespace    https://local.bridge/
-// @version      4.5
-// @description  LLM Local Bridge with dynamic workspace memory snapshot injection and multi-line parsing
+// @version      4.7
+// @description  LLM Local Bridge with tool metrics dashboard, strict CLI protocol, and unescape support
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
 // @match        https://gemini.google.com/*
@@ -19,9 +19,8 @@
 (function () {
     'use strict';
 
-    // 1. 嚴格防止 iframe 與多重注入 (DOM 實體標記 + window 標記雙重防護)
     if (window.top !== window.self) {
-        return; // 不在 iframe 內執行
+        return;
     }
 
     if (document.documentElement.dataset.llmBridgeLoaded === 'true' || window.__llm_local_bridge_loaded__) {
@@ -32,7 +31,7 @@
     window.__llm_local_bridge_loaded__ = true;
 
     console.log(
-        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.5 (No-Frames & Robust Guard)',
+        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.7 (Guard, Metrics & Strict Protocol)',
         'color:#22c55e;font-weight:bold;font-size:14px;'
     );
 
@@ -41,10 +40,10 @@
 
 ### 核心原則（最高優先級）
 1. 主動執行，嚴禁被動：嚴禁請使用者「手動修改」、「手動執行指令」或「自行複製貼上」。所有操作必須由你主動輸出 tool_call 區塊完成。
-2. 需要查看、執行、修改時：
-   - 檢視目錄、檔案內容、執行測試、安裝依賴：使用 execute_command。
-   - 建立、覆寫或修改檔案：使用 write_file。
-   - 查詢/建立 Issue、PR、讀取遠端倉庫檔案、Git 同步：使用 github_action。
+2. 工具選擇與語法鐵律（CRITICAL RULES - 違反將導致解析失敗）：
+   - 建立與修改檔案一律使用 write_file：嚴禁在 execute_command 內使用 \`cat << 'EOF'\`、\`echo "..." >\` 或 \`python3 -c "..."\` 來生成/修改檔案或腳本。任何超過 2 行的程式碼、包含多引號、括號或多行的內容，必須使用 write_file 寫入檔案。
+   - execute_command 僅限執行短指令：僅用於執行現有檔案或常用指令（如 \`python3 test.py\`、\`npm test\`）。嚴禁在 execute_command 中嵌入多行帶引號腳本，因為 Docker 底層外層 Shell 解析會崩潰（Syntax error: word unexpected）。
+   - 執行臨時腳本的兩步標準路徑：先用 write_file 寫入 \`temp_runner.py\`，再用 execute_command 執行並清理（如 \`python3 temp_runner.py && rm temp_runner.py\`）。
 3. 工具呼叫規範：操作環境時僅輸出 tool_call 區塊，輸出後立刻停止生成，等待 [TOOL_RESULT]。
 
 ### 支援工具格式
@@ -128,6 +127,48 @@
     let isPromptingToken = false;
     let lastPromptDismissTime = 0;
 
+    // 指標統計資料結構
+    function getMetrics() {
+        return GM_getValue('tool_call_metrics', { total: 0, success: 0, failed: 0 });
+    }
+
+    function recordMetric(isSuccess) {
+        const metrics = getMetrics();
+        metrics.total += 1;
+        if (isSuccess) {
+            metrics.success += 1;
+        } else {
+            metrics.failed += 1;
+        }
+        GM_setValue('tool_call_metrics', metrics);
+        updateMetricsBadge();
+    }
+
+    function createMetricsUI() {
+        if (document.getElementById('llm-bridge-metrics-badge')) return;
+        const badge = document.createElement('div');
+        badge.id = 'llm-bridge-metrics-badge';
+        badge.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:999999;background:#1e293b;color:#f8fafc;padding:6px 12px;border-radius:20px;font-family:sans-serif;font-size:12px;box-shadow:0 4px 12px rgba(0,0,0,0.25);border:1px solid #334155;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;';
+        badge.title = '點擊重置 Tool Calling 成功率統計';
+        badge.onclick = () => {
+            if (confirm('是否要重置 Tool Calling 成功率統計指標？')) {
+                GM_setValue('tool_call_metrics', { total: 0, success: 0, failed: 0 });
+                updateMetricsBadge();
+            }
+        };
+        document.body.appendChild(badge);
+        updateMetricsBadge();
+    }
+
+    function updateMetricsBadge() {
+        const badge = document.getElementById('llm-bridge-metrics-badge');
+        if (!badge) return;
+        const m = getMetrics();
+        const rate = m.total === 0 ? 100 : Math.round((m.success / m.total) * 100);
+        const statusColor = rate >= 90 ? '#22c55e' : rate >= 70 ? '#f59e0b' : '#ef4444';
+        badge.innerHTML = `<span style="width:8px;height:8px;border-radius:50%;background:${statusColor};display:inline-block;"></span><span>Tools: <b>${rate}%</b> (${m.success}/${m.total})</span>`;
+    }
+
     function promptForToken(forcePrompt = false) {
         if (sessionToken && !forcePrompt) {
             return sessionToken;
@@ -157,6 +198,11 @@
 
     GM_registerMenuCommand('🔑 設定 / 更新 Local Bridge Token', () => {
         promptForToken(true);
+    });
+
+    GM_registerMenuCommand('📊 重置 Tool Calling 成功率指標', () => {
+        GM_setValue('tool_call_metrics', { total: 0, success: 0, failed: 0 });
+        updateMetricsBadge();
     });
 
     function fetchContextPrompt() {
@@ -279,59 +325,82 @@
         return true;
     }
 
-    function extractJSONObject(text) {
-        const start = text.indexOf('{');
-        if (start === -1) return null;
-
-        let depth = 0;
-        let inString = false;
-
-        for (let i = start; i < text.length; i++) {
-            const c = text[i];
-            if (inString) {
-                if (c === '\\') {
-                    i++;
-                } else if (c === '"') {
-                    inString = false;
-                }
-                continue;
-            }
-
-            if (c === '"') {
-                inString = true;
-            } else if (c === '{') {
-                depth++;
-            } else if (c === '}') {
-                depth--;
-                if (depth === 0) {
-                    return text.substring(start, i + 1);
-                }
-            }
-        }
-        return null;
+    function unescapeJsonString(str) {
+        if (!str) return '';
+        return str
+            .replace(/\\"/g, '"')
+            .replace(/\\
+/g, '\
+')
+            .replace(/\\/g, '\')
+            .replace(/\\	/g, '\	')
+            .replace(/\\\\/g, '\\');
     }
 
     function parseMultiLineJson(rawText) {
-        let jsonCandidate = extractJSONObject(rawText);
-        if (!jsonCandidate) return null;
-
-        try {
-            return JSON.parse(jsonCandidate);
-        } catch (e1) {
-            try {
-                const normalized = jsonCandidate.replace(/\r\n|\r/g, '\n');
-                return JSON.parse(normalized);
-            } catch (e2) {
-                try {
-                    const sanitized = jsonCandidate.replace(/"(?:[^"\\]|\\.)*"/gs, (match) => {
-                        return match.replace(/\n/g, '\\n').replace(/\t/g, '\\t');
-                    });
-                    return JSON.parse(sanitized);
-                } catch (e3) {
-                    return null;
-                }
+        const blockMatch = rawText.match(/```(?:tool_call|bridge):([a-zA-Z0-9_-]+)\s*\
+([\s\S]*?)\
+```/);
+        if (blockMatch) {
+            const action = blockMatch[1];
+            const rawBody = blockMatch[2].trim();
+            if (action === 'execute_command') {
+                return { tool: 'execute_command', parameters: { command: rawBody } };
+            }
+            if (action === 'write_file') {
+                const firstNewline = rawBody.indexOf('\
+');
+                const path = rawBody.substring(0, firstNewline).replace(/^path:\s*/i, '').trim();
+                const content = rawBody.substring(firstNewline + 1);
+                return { tool: 'write_file', parameters: { path, content } };
             }
         }
+
+        try {
+            return JSON.parse(rawText.trim());
+        } catch (e) {}
+
+        const firstBrace = rawText.indexOf('{');
+        const lastBrace = rawText.lastIndexOf('}');
+        if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) return null;
+
+        const candidate = rawText.substring(firstBrace, lastBrace + 1);
+
+        try {
+            return JSON.parse(candidate);
+        } catch (e) {}
+
+        try {
+            const sanitized = candidate.replace(/"(?:[^"\\]|\\.)*"/gs, (match) => {
+                return match.replace(/\
+/g, '\\
+').replace(/\	/g, '\\	');
+            });
+            return JSON.parse(sanitized);
+        } catch (e) {}
+
+        const cmdMatch = candidate.match(/"tool"\s*:\s*"execute_command"[\s\S]*?"command"\s*:\s*"([\s\S]*?)"(?:\s*,\s*"timeout"|\s*\})/);
+        if (cmdMatch) {
+            return {
+                tool: 'execute_command',
+                parameters: {
+                    command: unescapeJsonString(cmdMatch[1])
+                }
+            };
+        }
+
+        const writeMatch = candidate.match(/"tool"\s*:\s*"write_file"[\s\S]*?"path"\s*:\s*"([^"]+)"[\s\S]*?"content"\s*:\s*"([\s\S]*?)"\s*\}/);
+        if (writeMatch) {
+            return {
+                tool: 'write_file',
+                parameters: {
+                    path: unescapeJsonString(writeMatch[1]),
+                    content: unescapeJsonString(writeMatch[2])
+                }
+            };
+        }
+
+        return null;
     }
 
     function getNextToolCall() {
@@ -371,6 +440,7 @@
 
     setInterval(async () => {
         if (isExecuting || isStreaming()) return;
+        createMetricsUI();
 
         const target = getNextToolCall();
         if (!target) return;
@@ -380,11 +450,21 @@
 
         try {
             const res = await sendToBackend(target.parsed);
-            const reply = `[TOOL_RESULT]\n\`\`\`json\n${JSON.stringify(res, null, 2)}\n\`\`\``;
+            const isSuccess = (res && res.status === 'success');
+            recordMetric(isSuccess);
+
+            const reply = `[TOOL_RESULT]\
+\`\`\`json\
+${JSON.stringify(res, null, 2)}\
+\`\`\``;
             await submitToLLM(reply);
         } catch (err) {
             console.error('[Bridge] Tool 執行失敗:', err);
-            const errReply = `[TOOL_RESULT]\n\`\`\`json\n${JSON.stringify({ status: 'error', output: String(err) }, null, 2)}\n\`\`\``;
+            recordMetric(false);
+            const errReply = `[TOOL_RESULT]\
+\`\`\`json\
+${JSON.stringify({ status: 'error', output: String(err) }, null, 2)}\
+\`\`\``;
             await submitToLLM(errReply);
         } finally {
             isExecuting = false;
@@ -409,10 +489,14 @@
             }
             isNewChat = false;
             console.log('[Bridge] 正在取得工作區快照並注入 Prompt...');
-            
+
             const memoryContext = await fetchContextPrompt();
-            const fullPrompt = `${BASE_SYSTEM_PROMPT}\n${memoryContext}\n---\n使用者的輸入如下：\n${val.trim()}`;
-            
+            const fullPrompt = `${BASE_SYSTEM_PROMPT}\
+${memoryContext}\
+---\
+使用者的輸入如下：\
+${val.trim()}`;
+
             await submitToLLM(fullPrompt);
         }
     }
