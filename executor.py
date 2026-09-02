@@ -1,24 +1,22 @@
-import asyncio
 import uuid
 from pathlib import Path
 from config import WORKSPACE_DIR, MAX_OUTPUT_CHARS, DEFAULT_TIMEOUT_SEC
 
-# 容器映像檔（可換成包含 python/node 的環境，如 python:3.11-slim 或 alpine）
+# 容器映像檔（包含常用執行環境）
 DOCKER_IMAGE = "python:3.11-slim"
 
 async def run_shell_command(command: str, timeout: int = DEFAULT_TIMEOUT_SEC) -> dict:
-    # 確保工作目錄存在且為絕對路徑
+    import asyncio
     workspace_abs = str(Path(WORKSPACE_DIR).resolve())
 
-    # 組裝 Docker 沙盒指令
     docker_args = [
         "docker", "run",
-        "--rm",                          # 執行完畢即銷毀容器
-        "--network", "none",             # 完全禁用容器網路（防外洩）
-        "--cpus", "2.0",                 # 限制 CPU 核心數
-        "--memory", "1g",                # 限制記憶體 1GB
-        "-v", f"{workspace_abs}:/workspace:rw",  # 僅掛載工作區
-        "-w", "/workspace",              # 工作目錄鎖定在 /workspace
+        "--rm",
+        "--network", "none",
+        "--cpus", "2.0",
+        "--memory", "1g",
+        "-v", f"{workspace_abs}:/workspace:rw",
+        "-w", "/workspace",
         DOCKER_IMAGE,
         "sh", "-c", command
     ]
@@ -32,15 +30,15 @@ async def run_shell_command(command: str, timeout: int = DEFAULT_TIMEOUT_SEC) ->
 
         try:
             stdout, stderr = await asyncio.wait_for(
-                process.communicate(), 
+                process.communicate(),
                 timeout=timeout
             )
         except asyncio.TimeoutError:
             process.kill()
             await process.wait()
             return {
-                "status": "timeout", 
-                "output": f"指令執行逾時 ({timeout}s)", 
+                "status": "timeout",
+                "output": f"指令執行逾時 ({timeout}s)",
                 "exit_code": -1
             }
 
@@ -59,8 +57,8 @@ async def run_shell_command(command: str, timeout: int = DEFAULT_TIMEOUT_SEC) ->
 
     except FileNotFoundError:
         return {
-            "status": "error", 
-            "output": "未在系統中找到 Docker，請確認 Docker Desktop / Daemon 是否已啟動並加入 PATH。", 
+            "status": "error",
+            "output": "未在系統中找到 Docker，請確認 Docker Desktop / Daemon 是否已啟動並加入 PATH。",
             "exit_code": -1
         }
     except Exception as e:
@@ -80,18 +78,26 @@ def write_workspace_file(path: str, content: str) -> dict:
 
 async def run_transient_script(code: str, language: str = "python", timeout: int = DEFAULT_TIMEOUT_SEC) -> dict:
     """
-    複合型指令：接收原始碼，於工作區自動寫入暫存檔執行，並保證在 finally 區塊刪除暫存檔。
+    執行暫存腳本：支援 python、bash、sh 等直譯器，沙盒內執行完畢後確保清理。
     """
+    lang_clean = language.lower().strip()
+    ext_map = {
+        "python": (".py", "python"),
+        "py": (".py", "python"),
+        "bash": (".sh", "bash"),
+        "sh": (".sh", "sh"),
+        "node": (".js", "node"),
+        "javascript": (".js", "node"),
+    }
+    ext, runner = ext_map.get(lang_clean, (".sh", "sh"))
     workspace_path = Path(WORKSPACE_DIR).resolve()
-    ext = ".py" if language == "python" else ".sh"
     temp_filename = f".temp_{uuid.uuid4().hex[:8]}{ext}"
     temp_file_path = workspace_path / temp_filename
 
     try:
         temp_file_path.write_text(code, encoding="utf-8")
-        cmd = f"python {temp_filename}" if language == "python" else f"sh {temp_filename}"
-        result = await run_shell_command(cmd, timeout=timeout)
-        return result
+        cmd = f"{runner} {temp_filename}"
+        return await run_shell_command(cmd, timeout=timeout)
     except Exception as e:
         return {"status": "error", "output": f"[Bridge] 暫存腳本執行異常: {str(e)}", "exit_code": -1}
     finally:
