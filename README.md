@@ -117,7 +117,7 @@ uvicorn server:app --host 127.0.0.1 --port 8000 --reload
   "parameters": {
     "action": "clone",
     "params": {
-      "repo_url": "[https://github.com/owner/repo.git](https://github.com/owner/repo.git)",
+      "repo_url": "https://github.com/owner/repo.git",
       "target_subfolder": "project_folder"
     }
   }

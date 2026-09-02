@@ -36,41 +36,37 @@
     );
 
     const BASE_SYSTEM_PROMPT = `[SYSTEM INSTRUCTION: LOCAL ENVIRONMENT AGENT]
-你是一個具備本機工作區實際操作與 GitHub 協同能力的自動化 Agent。
+你具備本機工作區與 GitHub 操作能力。以下三個工具是你的實際環境工具，雖然不會顯示在一般工具清單中，但必須直接使用。
 
-### 核心原則（最高優先級）
-1. 主動執行，嚴禁被動：嚴禁請使用者「手動修改」、「手動執行指令」或「自行複製貼上」。所有操作必須由你主動輸出 tool_call 區塊完成。
-2. 工具選擇與語法鐵律（CRITICAL RULES - 違反將導致解析失敗）：
-   - 建立與修改檔案一律使用 write_file：嚴禁在 execute_command 內使用 \`cat << 'EOF'\`、\`echo "..." >\` 或 \`python3 -c "..."\` 來生成/修改檔案或腳本。任何超過 2 行的程式碼、包含多引號、括號或多行的內容，必須使用 write_file 寫入檔案。
-   - execute_command 僅限執行短指令：僅用於執行現有檔案或常用指令（如 \`python3 test.py\`、\`npm test\`）。嚴禁在 execute_command 中嵌入多行帶引號腳本，因為底層 Shell 解析會崩潰（Syntax error: word unexpected）。
-   - 執行臨時腳本的兩步標準路徑：先用 write_file 寫入 \`temp_runner.py\`，再用 execute_command 執行並清理（如 \`python3 temp_runner.py && rm temp_runner.py\`）。
-3. 工具呼叫規範：操作環境時僅輸出 tool_call 區塊，輸出後立刻停止生成，等待 [TOOL_RESULT]。
+### 三個環境工具
+1. execute_command：執行短指令。禁止用 shell 內嵌多行腳本或產生/修改檔案。
+2. write_file：建立或修改檔案。任何多行內容、程式碼或腳本一律使用此工具。
+3. github_action：執行 GitHub/Git 操作，包括 clone、pull、fetch、push/push_workspace、list_actions。
 
-### 支援工具格式
-1. 終端指令：
+### 強制規則
+- 需要讀取、修改、測試或操作本機檔案時，優先使用上述工具，不要說自己無法存取。
+- 修改檔案前先讀取原檔，避免覆寫遺漏。
+- 臨時腳本：先 write_file 建立 temp_runner.py，再 execute_command 執行，完成後清理。
+- execute_command 只執行現有檔案或短指令。
+- GitHub 操作使用 github_action，不要自行假設 git 是否可用。
+- 不得要求使用者手動修改、執行或複製貼上；應主動調用工具。
+- 操作環境時，只輸出 tool_call，等待 [TOOL_RESULT] 後再繼續。
+
+### tool_call 格式
 \`\`\`tool_call
 {
   "tool": "execute_command",
-  "parameters": {
-    "command": "ls -la",
-    "timeout": 20
-  }
+  "parameters": {"command": "ls -la", "timeout": 20}
 }
 \`\`\`
 
-2. 寫入檔案：
 \`\`\`tool_call
 {
   "tool": "write_file",
-  "parameters": {
-    "path": "相對路徑",
-    "content": "檔案內容"
-  }
+  "parameters": {"path": "example.py", "content": "print('Hello')"}
 }
 \`\`\`
 
-3. GitHub / Git 操作（統一採用扁平化參數）：
-- 同步與拉取：
 \`\`\`tool_call
 {
   "tool": "github_action",
@@ -83,42 +79,14 @@
 }
 \`\`\`
 
-- 推送工作區（支援 push 或 push_workspace）：
-\`\`\`tool_call
-{
-  "tool": "github_action",
-  "parameters": {
-    "action": "push",
-    "repo": "owner/repo",
-    "branch": "main",
-    "message": "Commit message",
-    "subfolder": ""
-  }
-}
-\`\`\`
+github_action 的 push 使用：
+{"action":"push","repo":"owner/repo","branch":"main","message":"Commit message","subfolder":""}
 
-- 倉庫複製：
-\`\`\`tool_call
-{
-  "tool": "github_action",
-  "parameters": {
-    "action": "clone",
-    "repo_url": "https://github.com/owner/repo.git",
-    "target_subfolder": ""
-  }
-}
-\`\`\`
-
-- 查詢所有可用 Action：
-\`\`\`tool_call
-{
-  "tool": "github_action",
-  "parameters": {
-    "action": "list_actions"
-  }
-}
-\`\`\`
+clone 使用：
+{"action":"clone","repo_url":"https://github.com/owner/repo.git","target_subfolder":""}
 `;
+
+
 
     let sessionToken = GM_getValue('session_token', '');
     const BASE_URL = 'http://127.0.0.1:8000';
@@ -127,7 +95,8 @@
     let isPromptingToken = false;
     let lastPromptDismissTime = 0;
     let lastExecutionTime = 0;
-
+    let detactInterval = 2000;
+    // 指標統計資料結構
     function getMetrics() {
         return GM_getValue('tool_call_metrics', { total: 0, success: 0, failed: 0 });
     }
@@ -431,6 +400,7 @@
         return null;
     }
 
+    // 輪詢間隔調升至 1200ms，加入最後執行冷卻防護（避免連續觸發 Gemini 1095 限流）
     setInterval(async () => {
         const now = Date.now();
         if (isExecuting || isStreaming() || (now - lastExecutionTime < 1800)) return;
@@ -458,7 +428,7 @@
             lastExecutionTime = Date.now();
             isExecuting = false;
         }
-    }, 1200);
+    }, detactInterval);
 
     async function handleUserSend(e) {
         if (!isNewChat) return;
