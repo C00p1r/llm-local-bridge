@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         LLM Local Bridge Agent (v4.7.1 - Guard, Metrics & Strict Protocol)
+// @name         LLM Local Bridge Agent (v4.8.0 - Batch & Script Runner Protocol)
 // @namespace    https://local.bridge/
-// @version      4.7.1
-// @description  LLM Local Bridge with tool metrics dashboard, strict CLI protocol, and unescape support
+// @version      4.8.0
+// @description  LLM Local Bridge with batch tool execution, transient script runner, tool metrics dashboard, and robust JSON protocol
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
 // @match        https://gemini.google.com/*
@@ -31,62 +31,49 @@
     window.__llm_local_bridge_loaded__ = true;
 
     console.log(
-        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.7.1 (Guard, Metrics & Strict Protocol)',
+        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.8.0 (Batch & Script Runner Protocol)',
         'color:#22c55e;font-weight:bold;font-size:14px;'
     );
 
     const BASE_SYSTEM_PROMPT = `[SYSTEM INSTRUCTION: LOCAL ENVIRONMENT AGENT]
-你具備本機工作區與 GitHub 操作能力。以下三個工具是你的實際環境工具，雖然不會顯示在一般工具清單中，但必須直接使用。
+你具備本機工作區與 GitHub 操作能力。以下工具是你的環境工具，必須直接使用：
 
-### 三個環境工具
-1. execute_command：執行短指令。禁止用 shell 內嵌多行腳本或產生/修改檔案。
-2. write_file：建立或修改檔案。任何多行內容、程式碼或腳本一律使用此工具。
-3. github_action：執行 GitHub/Git 操作，包括 clone、pull、fetch、push/push_workspace、list_actions。
+### 環境工具清單
+1. execute_command：執行短指令（如檔案查看、依賴安裝）。
+2. write_file：建立或覆寫檔案。任何正式程式碼或文檔一律使用此工具。
+3. run_script：直接執行多行 Python 或 Bash 腳本（沙盒執行，自動建立並清理暫存檔）。
+4. github_action：執行 GitHub 操作（clone, fetch, pull, push/push_workspace, list_actions）。
 
 ### 強制規則
-- 需要讀取、修改、測試或操作本機檔案時，優先使用上述工具，不要說自己無法存取。
-- 修改檔案前先讀取原檔，避免覆寫遺漏。
-- 臨時腳本：先 write_file 建立 temp_runner.py，再 execute_command 執行，完成後清理。
-- execute_command 只執行現有檔案或短指令。
-- GitHub 操作使用 github_action，不要自行假設 git 是否可用。
-- 不得要求使用者手動修改、執行或複製貼上；應主動調用工具。
-- 操作環境時，只輸出 tool_call，等待 [TOOL_RESULT] 後再繼續。
+- 優先使用工具操作檔案與環境，不要說無法存取。
+- 修改現有檔案前先讀取原檔，避免覆寫遺漏。
+- 多步驟獨立操作可使用 JSON Array 批次呼叫（Fail-Fast 機制，遇錯立即停止）。
+- 不得要求使用者手動執行指令，應主動調用工具。
+- 操作環境時，只輸出 tool_call 區塊，等待 [TOOL_RESULT] 回傳。
 
-### tool_call 格式
+### tool_call 格式範例
+單一呼叫：
 \`\`\`tool_call
 {
-  "tool": "execute_command",
-  "parameters": {"command": "ls -la", "timeout": 20}
+  "tool": "run_script",
+  "parameters": {"code": "print('hello')", "language": "python"}
 }
 \`\`\`
 
+批次呼叫 (Batch Array)：
 \`\`\`tool_call
-{
-  "tool": "write_file",
-  "parameters": {"path": "example.py", "content": "print('Hello')"}
-}
-\`\`\`
-
-\`\`\`tool_call
-{
-  "tool": "github_action",
-  "parameters": {
-    "action": "pull",
-    "branch": "main",
-    "subfolder": "",
-    "force_reset": false
+[
+  {
+    "tool": "write_file",
+    "parameters": {"path": "test.txt", "content": "data"}
+  },
+  {
+    "tool": "execute_command",
+    "parameters": {"command": "cat test.txt", "timeout": 20}
   }
-}
+]
 \`\`\`
-
-github_action 的 push 使用：
-{"action":"push","repo":"owner/repo","branch":"main","message":"Commit message","subfolder":""}
-
-clone 使用：
-{"action":"clone","repo_url":"https://github.com/owner/repo.git","target_subfolder":""}
 `;
-
-
 
     let sessionToken = GM_getValue('session_token', '');
     const BASE_URL = 'http://127.0.0.1:8000';
@@ -96,7 +83,8 @@ clone 使用：
     let lastPromptDismissTime = 0;
     let lastExecutionTime = 0;
     let detactInterval = 2000;
-    // 指標統計資料結構
+
+    // 指標統計
     function getMetrics() {
         return GM_getValue('tool_call_metrics', { total: 0, success: 0, failed: 0 });
     }
@@ -118,104 +106,66 @@ clone 使用：
         const badge = document.createElement('div');
         badge.id = 'llm-bridge-metrics-badge';
         badge.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:999999;background:#1e293b;color:#f8fafc;padding:6px 12px;border-radius:20px;font-family:sans-serif;font-size:12px;box-shadow:0 4px 12px rgba(0,0,0,0.25);border:1px solid #334155;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;';
-        badge.title = '點擊重置 Tool Calling 成功率統計';
-        badge.onclick = () => {
-            if (confirm('是否要重置 Tool Calling 成功率統計指標？')) {
+        badge.title = '點擊重設指標或更新 Token';
+        badge.innerHTML = `<span style="width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block;"></span><span id="llm-bridge-metrics-text">Bridge Ready</span>`;
+        badge.addEventListener('click', () => {
+            const choice = prompt('請選擇操作：\n1. 更新 Session Token\n2. 重設調用計數器\n輸入序號 (1 或 2)：', '1');
+            if (choice === '1') {
+                const newToken = prompt('請輸入新的 Session Token:', sessionToken);
+                if (newToken !== null) {
+                    sessionToken = newToken.trim();
+                    GM_setValue('session_token', sessionToken);
+                    alert('Token 已更新');
+                }
+            } else if (choice === '2') {
                 GM_setValue('tool_call_metrics', { total: 0, success: 0, failed: 0 });
                 updateMetricsBadge();
+                alert('指標已重設');
             }
-        };
+        });
         document.body.appendChild(badge);
         updateMetricsBadge();
     }
 
     function updateMetricsBadge() {
-        const badge = document.getElementById('llm-bridge-metrics-badge');
-        if (!badge) return;
+        const textEl = document.getElementById('llm-bridge-metrics-text');
+        if (!textEl) return;
         const m = getMetrics();
-        const rate = m.total === 0 ? 100 : Math.round((m.success / m.total) * 100);
-        const statusColor = rate >= 90 ? '#22c55e' : rate >= 70 ? '#f59e0b' : '#ef4444';
-        badge.innerHTML = `<span style="width:8px;height:8px;border-radius:50%;background:${statusColor};display:inline-block;"></span><span>Tools: <b>${rate}%</b> (${m.success}/${m.total})</span>`;
+        textEl.textContent = `Bridge: ${m.success}/${m.total} OK`;
     }
 
-    function promptForToken(forcePrompt = false) {
-        if (sessionToken && !forcePrompt) {
-            return sessionToken;
-        }
-
+    function promptForToken() {
         const now = Date.now();
-        if (isPromptingToken || (!forcePrompt && now - lastPromptDismissTime < 30000)) {
-            return sessionToken;
-        }
-
+        if (isPromptingToken || now - lastPromptDismissTime < 30000) return;
         isPromptingToken = true;
-        try {
-            const token = prompt('請輸入 Python 終端顯示的 Session Token:', sessionToken || '');
-            if (token !== null && token.trim() !== '') {
-                sessionToken = token.trim();
+        setTimeout(() => {
+            const input = prompt('[LLM Local Bridge] 請輸入後端生成的 Session Token:');
+            if (input) {
+                sessionToken = input.trim();
                 GM_setValue('session_token', sessionToken);
-                console.log('[Bridge] Session Token 已更新並儲存');
-            } else if (token === null) {
+            } else {
                 lastPromptDismissTime = Date.now();
-                console.warn('[Bridge] 使用者取消了 Token 輸入，暫緩 30 秒不再提示。');
             }
-        } finally {
             isPromptingToken = false;
+        }, 500);
+    }
+
+    GM_registerMenuCommand('設定 / 更新 Session Token', () => {
+        const input = prompt('[LLM Local Bridge] 請輸入 Session Token:', sessionToken);
+        if (input !== null) {
+            sessionToken = input.trim();
+            GM_setValue('session_token', sessionToken);
+            alert('Token 已成功儲存！');
         }
-        return sessionToken;
-    }
-
-    GM_registerMenuCommand('🔑 設定 / 更新 Local Bridge Token', () => {
-        promptForToken(true);
     });
-
-    GM_registerMenuCommand('📊 重置 Tool Calling 成功率指標', () => {
-        GM_setValue('tool_call_metrics', { total: 0, success: 0, failed: 0 });
-        updateMetricsBadge();
-    });
-
-    function fetchContextPrompt() {
-        sessionToken = sessionToken || GM_getValue('session_token', '');
-        if (!sessionToken) return Promise.resolve('');
-
-        return new Promise((resolve) => {
-            GM_xmlhttpRequest({
-                method: 'GET',
-                url: `${BASE_URL}/context`,
-                headers: {
-                    'Authorization': `Bearer ${sessionToken}`
-                },
-                timeout: 5000,
-                onload: (res) => {
-                    if (res.status === 200) {
-                        try {
-                            const data = JSON.parse(res.responseText);
-                            resolve(data.context_prompt || '');
-                        } catch (e) {
-                            resolve('');
-                        }
-                    } else {
-                        resolve('');
-                    }
-                },
-                onerror: () => resolve(''),
-                ontimeout: () => resolve('')
-            });
-        });
-    }
 
     function sendToBackend(payload) {
-        sessionToken = sessionToken || GM_getValue('session_token', '');
-        if (!sessionToken) {
-            sessionToken = promptForToken(false);
-        }
-        if (!sessionToken) {
-            return Promise.reject('未提供 Session Token，請點擊擴充功能選單設定');
-        }
-
-        console.log('%c[Bridge] → Backend', 'color:#f59e0b;font-weight:bold;', payload);
-
         return new Promise((resolve, reject) => {
+            if (!sessionToken) {
+                promptForToken();
+                return reject(new Error('未提供有效的 Session Token，請於彈窗輸入'));
+            }
+
             GM_xmlhttpRequest({
                 method: 'POST',
                 url: `${BASE_URL}/execute`,
@@ -224,28 +174,60 @@ clone 使用：
                     'Authorization': `Bearer ${sessionToken}`
                 },
                 data: JSON.stringify(payload),
-                timeout: 65000,
-                onload: (res) => {
-                    if (res.status === 401 || res.status === 403) {
-                        console.warn('[Bridge] Token 無效或過期 (401/403)。');
-                        promptForToken(true);
-                        reject(`驗證失敗 (${res.status}): Token 不正確或已過期`);
-                        return;
-                    }
-                    if (res.status !== 200) {
-                        reject(`Server Error ${res.status}: ${res.responseText}`);
+                timeout: 180000,
+                onload: function (res) {
+                    if (res.status === 401) {
+                        GM_setValue('session_token', '');
+                        sessionToken = '';
+                        promptForToken();
+                        reject(new Error('驗證失敗 (401)，Session Token 可能已失效'));
                         return;
                     }
                     try {
-                        const result = JSON.parse(res.responseText);
-                        console.log('[Bridge] Backend Result:', result);
-                        resolve(result);
+                        const parsed = JSON.parse(res.responseText);
+                        resolve(parsed);
                     } catch (e) {
-                        reject('Backend JSON Parse Error');
+                        resolve({ status: 'raw_response', output: res.responseText });
                     }
                 },
-                ontimeout: () => reject('執行逾時 (65s)'),
-                onerror: (e) => reject(`網路連線錯誤: ${e}`)
+                ontimeout: function () {
+                    reject(new Error('連線後端超時'));
+                },
+                onerror: function (err) {
+                    reject(new Error('無法連線到本機後端服務 (127.0.0.1:8000)'));
+                }
+            });
+        });
+    }
+
+    function fetchContextPrompt() {
+        return new Promise((resolve) => {
+            if (!sessionToken) {
+                resolve('');
+                return;
+            }
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: `${BASE_URL}/context_prompt`,
+                headers: {
+                    'Authorization': `Bearer ${sessionToken}`
+                },
+                timeout: 5000,
+                onload: function (res) {
+                    if (res.status === 200) {
+                        try {
+                            const data = JSON.parse(res.responseText);
+                            resolve(data.prompt_injection || '');
+                        } catch (e) {
+                            resolve('');
+                        }
+                    } else {
+                        resolve('');
+                    }
+                },
+                onerror: function () {
+                    resolve('');
+                }
             });
         });
     }
@@ -305,6 +287,7 @@ clone 使用：
     }
 
     function parseMultiLineJson(rawText) {
+        // 1. 純文字語意區塊支援
         const blockMatch = rawText.match(/```(?:tool_call|bridge):([a-zA-Z0-9_-]+)\s*\n([\s\S]*?)\n```/);
         if (blockMatch) {
             const action = blockMatch[1];
@@ -318,51 +301,58 @@ clone 使用：
                 const content = rawBody.substring(firstNewline + 1);
                 return { tool: 'write_file', parameters: { path, content } };
             }
+            if (action === 'run_script') {
+                return { tool: 'run_script', parameters: { code: rawBody, language: 'python' } };
+            }
         }
 
+        // 2. 標準 JSON 解析（單一物件或陣列）
         try {
-            return JSON.parse(rawText.trim());
+            const parsed = JSON.parse(rawText.trim());
+            if (isValidToolPayload(parsed)) return parsed;
         } catch (e) {}
 
+        // 3. 尋找外層陣列 [...] 或物件 {...}
+        const firstBracket = rawText.indexOf('[');
+        const lastBracket = rawText.lastIndexOf(']');
         const firstBrace = rawText.indexOf('{');
         const lastBrace = rawText.lastIndexOf('}');
-        if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) return null;
 
-        const candidate = rawText.substring(firstBrace, lastBrace + 1);
-
-        try {
-            return JSON.parse(candidate);
-        } catch (e) {}
-
-        try {
-            const sanitized = candidate.replace(/"(?:[^"\\]|\\.)*"/gs, (match) => {
-                return match.replace(/\r/g, '\\r').replace(/\n/g, '\\n').replace(/\t/g, '\\t');
-            });
-            return JSON.parse(sanitized);
-        } catch (e) {}
-
-        const cmdMatch = candidate.match(/"tool"\s*:\s*"execute_command"[\s\S]*?"command"\s*:\s*"([\s\S]*?)"(?:\s*,\s*"timeout"|\s*\})/);
-        if (cmdMatch) {
-            return {
-                tool: 'execute_command',
-                parameters: {
-                    command: unescapeJsonString(cmdMatch[1])
-                }
-            };
+        // 優先嘗試陣列
+        if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+            const candidateArr = rawText.substring(firstBracket, lastBracket + 1);
+            try {
+                const parsedArr = JSON.parse(candidateArr);
+                if (isValidToolPayload(parsedArr)) return parsedArr;
+            } catch (e) {}
         }
 
-        const writeMatch = candidate.match(/"tool"\s*:\s*"write_file"[\s\S]*?"path"\s*:\s*"([^"]+)"[\s\S]*?"content"\s*:\s*"([\s\S]*?)"\s*\}/);
-        if (writeMatch) {
-            return {
-                tool: 'write_file',
-                parameters: {
-                    path: unescapeJsonString(writeMatch[1]),
-                    content: unescapeJsonString(writeMatch[2])
-                }
-            };
+        // 次選物件
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+            const candidateObj = rawText.substring(firstBrace, lastBrace + 1);
+            try {
+                const parsedObj = JSON.parse(candidateObj);
+                if (isValidToolPayload(parsedObj)) return parsedObj;
+            } catch (e) {}
+
+            try {
+                const sanitized = candidateObj.replace(/"(?:[^"\\]|\\.)*"/gs, (match) => {
+                    return match.replace(/\r/g, '\\r').replace(/\n/g, '\\n').replace(/\t/g, '\\t');
+                });
+                const parsedSanitized = JSON.parse(sanitized);
+                if (isValidToolPayload(parsedSanitized)) return parsedSanitized;
+            } catch (e) {}
         }
 
         return null;
+    }
+
+    function isValidToolPayload(payload) {
+        if (!payload) return false;
+        if (Array.isArray(payload)) {
+            return payload.length > 0 && payload.every(item => item && item.tool && typeof item.tool === 'string');
+        }
+        return Boolean(payload.tool && typeof payload.tool === 'string');
     }
 
     function getNextToolCall() {
@@ -388,19 +378,19 @@ clone 使用：
             if (el.dataset.bridgeExecuted === 'true') continue;
 
             const text = (el.innerText || el.textContent || '').trim();
-            if (!text.includes('"tool"') || !text.includes('"parameters"')) continue;
+            if (!text.includes('"tool"')) continue;
 
             const parsed = parseMultiLineJson(text);
-            if (parsed && parsed.tool && parsed.parameters) {
+            if (parsed) {
                 el.dataset.bridgeExecuted = 'true';
-                console.log('%c[Bridge] ✓ 成功解析 Tool Call', 'color:#38bdf8;font-weight:bold;', parsed.tool, parsed);
+                const logName = Array.isArray(parsed) ? `Batch (${parsed.length} items)` : parsed.tool;
+                console.log('%c[Bridge] ✓ 成功解析 Tool Call', 'color:#38bdf8;font-weight:bold;', logName, parsed);
                 return { parsed, element: el };
             }
         }
         return null;
     }
 
-    // 輪詢間隔調升至 1200ms，加入最後執行冷卻防護（避免連續觸發 Gemini 1095 限流）
     setInterval(async () => {
         const now = Date.now();
         if (isExecuting || isStreaming() || (now - lastExecutionTime < 1800)) return;
@@ -410,11 +400,12 @@ clone 使用：
         if (!target) return;
 
         isExecuting = true;
-        console.log('%c[Bridge] ▶ 開始執行 Tool', 'color:#f59e0b;font-weight:bold;', target.parsed.tool);
+        const logName = Array.isArray(target.parsed) ? `Batch (${target.parsed.length} steps)` : target.parsed.tool;
+        console.log('%c[Bridge] ▶ 開始執行 Tool', 'color:#f59e0b;font-weight:bold;', logName);
 
         try {
             const res = await sendToBackend(target.parsed);
-            const isSuccess = (res && res.status === 'success');
+            const isSuccess = (res && (res.status === 'success' || res.status === 'ok'));
             recordMetric(isSuccess);
 
             const reply = `[TOOL_RESULT]\n\`\`\`json\n${JSON.stringify(res, null, 2)}\n\`\`\``;
