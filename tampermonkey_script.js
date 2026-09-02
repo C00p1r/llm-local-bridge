@@ -1,11 +1,12 @@
 // ==UserScript==
-// @name         LLM Local Bridge Agent (v4.4 - Auto Reconnect & Multi-line Parsing)
+// @name         LLM Local Bridge Agent (v4.5 - Robust Guard & Anti-reprompt)
 // @namespace    https://local.bridge/
-// @version      4.4
+// @version      4.5
 // @description  LLM Local Bridge with dynamic workspace memory snapshot injection and multi-line parsing
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
 // @match        https://gemini.google.com/*
+// @noframes
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_registerMenuCommand
@@ -18,14 +19,20 @@
 (function () {
     'use strict';
 
-    if (window.__llm_local_bridge_loaded__) {
-        console.log('[LLM Local Bridge] 腳本已在當前頁面執行，略過重複載入。');
+    // 1. 嚴格防止 iframe 與多重注入 (DOM 實體標記 + window 標記雙重防護)
+    if (window.top !== window.self) {
+        return; // 不在 iframe 內執行
+    }
+
+    if (document.documentElement.dataset.llmBridgeLoaded === 'true' || window.__llm_local_bridge_loaded__) {
+        console.log('[LLM Local Bridge] 檢測到已加載實例，略過本次重複執行。');
         return;
     }
+    document.documentElement.dataset.llmBridgeLoaded = 'true';
     window.__llm_local_bridge_loaded__ = true;
 
     console.log(
-        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.4 (Memory & Multi-line Support)',
+        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.5 (No-Frames & Robust Guard)',
         'color:#22c55e;font-weight:bold;font-size:14px;'
     );
 
@@ -63,16 +70,52 @@
 }
 \`\`\`
 
-3. GitHub / Git 操作：
+3. GitHub / Git 操作（統一採用扁平化參數）：
+- 同步與拉取：
 \`\`\`tool_call
 {
   "tool": "github_action",
   "parameters": {
     "action": "pull",
-    "params": {
-      "branch": "main",
-      "force_reset": false
-    }
+    "branch": "main",
+    "subfolder": "",
+    "force_reset": false
+  }
+}
+\`\`\`
+
+- 推送工作區（支援 push 或 push_workspace）：
+\`\`\`tool_call
+{
+  "tool": "github_action",
+  "parameters": {
+    "action": "push",
+    "repo": "owner/repo",
+    "branch": "main",
+    "message": "Commit message",
+    "subfolder": ""
+  }
+}
+\`\`\`
+
+- 倉庫複製：
+\`\`\`tool_call
+{
+  "tool": "github_action",
+  "parameters": {
+    "action": "clone",
+    "repo_url": "https://github.com/owner/repo.git",
+    "target_subfolder": ""
+  }
+}
+\`\`\`
+
+- 查詢所有可用 Action：
+\`\`\`tool_call
+{
+  "tool": "github_action",
+  "parameters": {
+    "action": "list_actions"
   }
 }
 \`\`\`
@@ -82,15 +125,32 @@
     const BASE_URL = 'http://127.0.0.1:8000';
     let isExecuting = false;
     let isNewChat = true;
+    let isPromptingToken = false;
+    let lastPromptDismissTime = 0;
 
     function promptForToken(forcePrompt = false) {
-        if (!sessionToken || forcePrompt) {
+        if (sessionToken && !forcePrompt) {
+            return sessionToken;
+        }
+
+        const now = Date.now();
+        if (isPromptingToken || (!forcePrompt && now - lastPromptDismissTime < 30000)) {
+            return sessionToken;
+        }
+
+        isPromptingToken = true;
+        try {
             const token = prompt('請輸入 Python 終端顯示的 Session Token:', sessionToken || '');
-            if (token) {
+            if (token !== null && token.trim() !== '') {
                 sessionToken = token.trim();
                 GM_setValue('session_token', sessionToken);
                 console.log('[Bridge] Session Token 已更新並儲存');
+            } else if (token === null) {
+                lastPromptDismissTime = Date.now();
+                console.warn('[Bridge] 使用者取消了 Token 輸入，暫緩 30 秒不再提示。');
             }
+        } finally {
+            isPromptingToken = false;
         }
         return sessionToken;
     }
@@ -101,6 +161,8 @@
 
     function fetchContextPrompt() {
         sessionToken = sessionToken || GM_getValue('session_token', '');
+        if (!sessionToken) return Promise.resolve('');
+
         return new Promise((resolve) => {
             GM_xmlhttpRequest({
                 method: 'GET',
@@ -132,6 +194,9 @@
         if (!sessionToken) {
             sessionToken = promptForToken(false);
         }
+        if (!sessionToken) {
+            return Promise.reject('未提供 Session Token，請點擊擴充功能選單設定');
+        }
 
         console.log('%c[Bridge] → Backend', 'color:#f59e0b;font-weight:bold;', payload);
 
@@ -147,9 +212,9 @@
                 timeout: 65000,
                 onload: (res) => {
                     if (res.status === 401 || res.status === 403) {
-                        console.warn('[Bridge] Token 無效或過期，請重新輸入。');
+                        console.warn('[Bridge] Token 無效或過期 (401/403)。');
                         promptForToken(true);
-                        reject(`驗證失敗 (${res.status}): Token 不正確`);
+                        reject(`驗證失敗 (${res.status}): Token 不正確或已過期`);
                         return;
                     }
                     if (res.status !== 200) {
@@ -165,7 +230,7 @@
                     }
                 },
                 ontimeout: () => reject('執行逾時 (65s)'),
-                onerror: (e) => reject(`網路錯誤: ${e}`)
+                onerror: (e) => reject(`網路連線錯誤: ${e}`)
             });
         });
     }
