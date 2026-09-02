@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         LLM Local Bridge Agent (v4.8.0 - Batch & Script Runner Protocol)
+// @name         LLM Local Bridge Agent (v4.8.1 - Complete Schema & Metric Accuracy)
 // @namespace    https://local.bridge/
-// @version      4.8.0
-// @description  LLM Local Bridge with batch tool execution, transient script runner, tool metrics dashboard, and robust JSON protocol
+// @version      4.8.1
+// @description  LLM Local Bridge with comprehensive tool call schemas, batch execution, and percentage accuracy metrics
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
 // @match        https://gemini.google.com/*
@@ -31,36 +31,74 @@
     window.__llm_local_bridge_loaded__ = true;
 
     console.log(
-        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.8.0 (Batch & Script Runner Protocol)',
+        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.8.1 (Complete Schema & Metric Accuracy)',
         'color:#22c55e;font-weight:bold;font-size:14px;'
     );
 
     const BASE_SYSTEM_PROMPT = `[SYSTEM INSTRUCTION: LOCAL ENVIRONMENT AGENT]
-你具備本機工作區與 GitHub 操作能力。以下工具是你的環境工具，必須直接使用：
+你具備本機工作區與 GitHub 操作能力。以下工具是你的環境工具，必須直接使用。
 
-### 環境工具清單
-1. execute_command：執行短指令（如檔案查看、依賴安裝）。
-2. write_file：建立或覆寫檔案。任何正式程式碼或文檔一律使用此工具。
-3. run_script：直接執行多行 Python 或 Bash 腳本（沙盒執行，自動建立並清理暫存檔）。
-4. github_action：執行 GitHub 操作（clone, fetch, pull, push/push_workspace, list_actions）。
+### 環境工具規格與參數定義 (Tool Schemas)
 
-### 強制規則
-- 優先使用工具操作檔案與環境，不要說無法存取。
-- 修改現有檔案前先讀取原檔，避免覆寫遺漏。
-- 多步驟獨立操作可使用 JSON Array 批次呼叫（Fail-Fast 機制，遇錯立即停止）。
-- 不得要求使用者手動執行指令，應主動調用工具。
-- 操作環境時，只輸出 tool_call 區塊，等待 [TOOL_RESULT] 回傳。
+1. execute_command: 執行短指令或檢查指令。
+   參數:
+   - command (string, 必填): 要執行的 Shell 指令。
+   - timeout (int, 選填): 逾時秒數 (預設 20)。
+   範例:
+   {
+     "tool": "execute_command",
+     "parameters": {"command": "ls -la", "timeout": 20}
+   }
 
-### tool_call 格式範例
-單一呼叫：
-\`\`\`tool_call
-{
-  "tool": "run_script",
-  "parameters": {"code": "print('hello')", "language": "python"}
-}
-\`\`\`
+2. write_file: 建立或覆寫檔案。
+   參數:
+   - path (string, 必填): 工作區相對路徑。
+   - content (string, 必填): 檔案文字內容。
+   範例:
+   {
+     "tool": "write_file",
+     "parameters": {"path": "example.py", "content": "print('hello')"}
+   }
 
-批次呼叫 (Batch Array)：
+3. run_script: 在沙盒內執行暫存腳本 (自動清理暫存檔)。
+   參數:
+   - code (string, 必填): 完整腳本程式碼。
+   - language (string, 選填): 直譯器類型，支援 "python"、"bash"、"sh"、"node" (預設 "python")。
+   - timeout (int, 選填): 逾時秒數 (預設 30)。
+   範例:
+   {
+     "tool": "run_script",
+     "parameters": {"code": "import sys\nprint(sys.version)", "language": "python"}
+   }
+
+4. github_action: 執行 GitHub / Git 操作。
+   參數:
+   - action (string, 必填): 支援 "push" | "push_workspace" | "pull" | "fetch" | "clone" | "list_actions"。
+   - branch (string, 選填): 分支名稱 (預設 "main")。
+   - repo (string, 選填): "owner/repo" (push 操作必填)。
+   - repo_url (string, 選填): Git clone 網址 (clone 操作必填)。
+   - message (string, 選填): Commit 訊息 (push 操作建議提供)。
+   - subfolder (string, 選填): 推送或操作的子目錄 (若操作根目錄則留空字串 "")。
+   - target_subfolder (string, 選填): clone 目的目錄名稱。
+   - force_reset (bool, 選填): 是否強制重設 (pull 操作可選)。
+   範例 (push):
+   {
+     "tool": "github_action",
+     "parameters": {"action": "push", "repo": "owner/repo", "branch": "main", "message": "update", "subfolder": ""}
+   }
+   範例 (pull):
+   {
+     "tool": "github_action",
+     "parameters": {"action": "pull", "branch": "main", "subfolder": "", "force_reset": false}
+   }
+
+### 執行與呼叫原則
+- 操作檔案、環境或測試時優先調用工具，不要宣稱無法存取。
+- 修改檔案前先讀取原檔，避免內容遺漏。
+- 多步驟操作可使用 JSON Array 批次呼叫 (支援 Fail-Fast 機制)。
+- 操作環境時，僅輸出 \`\`\`tool_call 區塊，等待系統回傳 [TOOL_RESULT] 後再接續分析。
+
+### 批次呼叫 (Batch Array) 格式
 \`\`\`tool_call
 [
   {
@@ -84,7 +122,6 @@
     let lastExecutionTime = 0;
     let detactInterval = 2000;
 
-    // 指標統計
     function getMetrics() {
         return GM_getValue('tool_call_metrics', { total: 0, success: 0, failed: 0 });
     }
@@ -131,7 +168,8 @@
         const textEl = document.getElementById('llm-bridge-metrics-text');
         if (!textEl) return;
         const m = getMetrics();
-        textEl.textContent = `Bridge: ${m.success}/${m.total} OK`;
+        const accuracy = m.total > 0 ? ((m.success / m.total) * 100).toFixed(1) : '100.0';
+        textEl.textContent = `Bridge: ${m.success}/${m.total} (${accuracy}%)`;
     }
 
     function promptForToken() {
@@ -287,7 +325,6 @@
     }
 
     function parseMultiLineJson(rawText) {
-        // 1. 純文字語意區塊支援
         const blockMatch = rawText.match(/```(?:tool_call|bridge):([a-zA-Z0-9_-]+)\s*\n([\s\S]*?)\n```/);
         if (blockMatch) {
             const action = blockMatch[1];
@@ -306,19 +343,16 @@
             }
         }
 
-        // 2. 標準 JSON 解析（單一物件或陣列）
         try {
             const parsed = JSON.parse(rawText.trim());
             if (isValidToolPayload(parsed)) return parsed;
         } catch (e) {}
 
-        // 3. 尋找外層陣列 [...] 或物件 {...}
         const firstBracket = rawText.indexOf('[');
         const lastBracket = rawText.lastIndexOf(']');
         const firstBrace = rawText.indexOf('{');
         const lastBrace = rawText.lastIndexOf('}');
 
-        // 優先嘗試陣列
         if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
             const candidateArr = rawText.substring(firstBracket, lastBracket + 1);
             try {
@@ -327,7 +361,6 @@
             } catch (e) {}
         }
 
-        // 次選物件
         if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
             const candidateObj = rawText.substring(firstBrace, lastBrace + 1);
             try {
