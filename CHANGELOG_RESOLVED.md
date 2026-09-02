@@ -1,5 +1,12 @@
 # Changelog & Release Notes
 
+## v4.8.1 (2026-09-03)
+- **Complete Tool Schemas in System Prompt**: Fully specified parameter types, required/optional flags, and default values for `execute_command`, `write_file`, `run_script`, and `github_action` in Tampermonkey's injected instruction.
+- **Metric Accuracy Percentage Display**: Updated the floating status badge to display real-time success rate with percentage formatting (`Bridge: 5/5 (100.0%)`).
+- **Batch Array Parser Compatibility**: Frontend regex and fallback bracket extractors now seamlessly handle JSON array payloads (`[...]`) for batch pipeline calls.
+- **CRLF to LF Line Normalization**: Enforced strict POSIX line ending normalization in `write_workspace_file` and `run_transient_script` to eliminate carriage return syntax errors in containerized Linux Bash executions.
+- **Transient Sandbox Execution (`run_script`)**: Introduced Python/Bash script execution with automated lifecycle cleanup, reducing round-trip dialog latency by up to 70%.
+
 ## v4.7.1 (2026-09-02)
 - **Fix Regex Escaping in Tampermonkey Script**: Resolved literal unescaped newlines in `unescapeJsonString` causing syntax parse errors.
 - **Throttle & Cooldown Safeguard**: Extended poll interval to 1200ms and added an 1800ms cooldown after execution to prevent triggering Gemini rate-limits and `Something went wrong (1095)` errors.
@@ -12,4 +19,4 @@
 
 ## Known Issues & Ongoing Investigations
 - **Gemini API Error (1095)**: 發生於「長對話紀錄 + 快速連續回應」情境，可能涉及 token 膨脹或網頁端 DOM 更新過載。
-- **Tool Calling Rate Limit**: 短時間內高頻調用工具容易觸發前端或後端限流，需在 Tampermonkey 端評估加入請求節流（throttle/debounce）機制。
+- **Tool Calling Rate Limit**: 短時間內高頻調用工具容易觸發前端或後端限流，已透過 1800ms 冷卻防護與 Batch Array 機制有效降低輪詢頻率。

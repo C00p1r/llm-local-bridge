@@ -8,32 +8,125 @@
 
 ```
 [ Web LLM (ChatGPT / Gemini) ]
-              │  (解析 tool_call 區塊)
+              │  (解析 tool_call 區塊: 單一物件 or 批次陣列)
               ▼
 [ Tampermonkey Script (Browser) ]
               │  (HTTP POST /execute + Bearer Token)
               ▼
 [ FastAPI Server (server.py) ]
-              ├── write_file ──────> 本機 ./workspace (路徑穿越防護)
-              ├── github_action ───> 主機端 Git CLI / REST API (Clone/Pull/Push)
-              └── execute_command ──> Docker Sandbox (executor.py)
-                                           │ (斷網 --network none、限制 CPU/RAM)
-                                           ▼
-                                     [ Container ]
+              ├── write_file ──────> 本機 ./workspace (路徑穿越防護 + LF 正規化)
+              ├── run_script ──────> Docker Sandbox (自動暫存、沙盒執行、結束即銷毀)
+              ├── execute_command ──> Docker Sandbox (executor.py, 斷網 --network none)
+              └── github_action ───> 主機端 Git CLI / REST API (Clone/Pull/Push)
 ```
 
 ---
 
 ## 專案結構
 
-* `server.py`：本機 FastAPI 伺服器，負責權限驗證（Session Token）、Docker 狀態自檢與工具請求派發。
-* `executor.py`：指令執行器，透過 Docker 斷網沙盒（`python:3.11-slim`）安全隔離執行 Bash 指令。
+* `server.py`：本機 FastAPI 伺服器，負責權限驗證（Session Token）、Docker 狀態自檢與工具請求派發（支援 Batch Array 與 Fail-Fast 機制）。
+* `executor.py`：指令執行器，透過 Docker 斷網沙盒（`python:3.11-slim`）安全隔離執行 Bash 指令，支援暫存多語言腳本（`run_transient_script`）與 CRLF/LF 自動正規化。
 * `github_client.py`：GitHub 協同模組，由主機端代為處理 `clone`、`fetch`、`pull`、`push_workspace` 及 REST API 操作。
 * `memory_manager.py`：專案快照與記憶體管理，動態維護工作區目錄結構與環境狀態。
 * `config.py`：環境與安全設定（工作區路徑、逾時時間、字數限制、Token 生成）。
 * `launcher.py`：一鍵啟動腳本，自動檢查 Docker 與環境依賴。
-* `tampermonkey_script.js`：瀏覽器使用者腳本，負責攔截對話、發送 API 並自動回填 `[TOOL_RESULT]`。
+* `tampermonkey_script.js`：瀏覽器使用者腳本 (v4.8.1)，負責攔截對話、解析單一/批次 Tool Call、回填 `[TOOL_RESULT]` 並顯示即時調用成功率 (Badge %)。
 * `requirements.txt`：Python 後端依賴套件清單。
+
+---
+
+## 支援工具格式 (Tool Schemas)
+
+### 1. 終端指令 (`execute_command`)
+在斷網沙盒中執行 Shell 指令（適用於短指令、檔案檢視、套件檢查）：
+```json
+{
+  "tool": "execute_command",
+  "parameters": {
+    "command": "ls -la",
+    "timeout": 20
+  }
+}
+```
+
+### 2. 寫入檔案 (`write_file`)
+建立或覆寫工作區中的檔案（具備路徑防穿越機制與自動 CRLF $\to$ LF 轉換）：
+```json
+{
+  "tool": "write_file",
+  "parameters": {
+    "path": "example.py",
+    "content": "print('Hello, world!')"
+  }
+}
+```
+
+### 3. 沙盒暫存腳本執行 (`run_script`)
+直接在沙盒中執行多行程式碼（支援 `python`、`bash`、`sh`、`node`），自動建立隔離暫存檔並在執行結束後保證清理：
+```json
+{
+  "tool": "run_script",
+  "parameters": {
+    "code": "import sys\nprint(f'Python: {sys.version}')",
+    "language": "python",
+    "timeout": 30
+  }
+}
+```
+
+### 4. 批次呼叫 (Batch Array Pipeline)
+將多個相依或循序操作打包成一個陣列同時發送，後端循序執行並實施 **Fail-Fast** 機制（若某步失敗則立即中斷，避免產生髒狀態）：
+```json
+[
+  {
+    "tool": "write_file",
+    "parameters": {"path": "test.txt", "content": "hello"}
+  },
+  {
+    "tool": "run_script",
+    "parameters": {"code": "cat test.txt", "language": "bash"}
+  }
+]
+```
+
+### 5. GitHub / Git 操作 (`github_action`)
+由主機連網環境代為執行 Git 操作或呼叫 GitHub REST API：
+* **推送工作區 (`push_workspace` / `push`)**：
+```json
+{
+  "tool": "github_action",
+  "parameters": {
+    "action": "push",
+    "repo": "owner/repo",
+    "branch": "main",
+    "message": "Commit message",
+    "subfolder": "project_folder"
+  }
+}
+```
+* **遠端同步 (`pull`)**：
+```json
+{
+  "tool": "github_action",
+  "parameters": {
+    "action": "pull",
+    "branch": "main",
+    "subfolder": "project_folder",
+    "force_reset": false
+  }
+}
+```
+* **複製倉庫 (`clone`)**：
+```json
+{
+  "tool": "github_action",
+  "parameters": {
+    "action": "clone",
+    "repo_url": "[https://github.com/owner/repo.git](https://github.com/owner/repo.git)",
+    "target_subfolder": "project_folder"
+  }
+}
+```
 
 ---
 
@@ -51,7 +144,6 @@
 1. **啟用 WSL 2 與安裝 Linux 發行版**：
    ```powershell
    wsl --install
-   # 或確認已設為 WSL 2
    wsl --set-default-version 2
    ```
 2. **配置 Docker Desktop WSL 整合**：
@@ -72,155 +164,22 @@ python launcher.py
 # 或使用 uvicorn 啟動
 uvicorn server:app --host 127.0.0.1 --port 8000 --reload
 ```
-*伺服器啟動時會自檢 Docker 運行狀態，並在終端輸出本次生成的 `SESSION_TOKEN`。*
 
 ### 5. 設定 Tampermonkey
 1. 將 `tampermonkey_script.js` 匯入瀏覽器的 Tampermonkey 擴充套件。
-2. 將伺服器啟動時顯示的 Token 填入腳本設定中（腳本會自動儲存於 GM 儲存庫，無需每次對話重複輸入）。
-3. 開啟 ChatGPT 或 Gemini，系統將自動注入 Agent 提示詞與本機工作區快照。
+2. 將伺服器啟動時終端輸出的 Token 填入設定彈窗（腳本會自動儲存於 GM 儲存庫，無需每次對話重複輸入）。
+3. 右下角即會常駐顯示狀態 Badge，例如 `Bridge: 5/5 (100.0%)`。
 
 ---
 
-## 支援工具格式
+## 踩坑紀錄與最佳實踐 (Troubleshooting & Best Practices)
 
-### 1. 終端指令 (`execute_command`)
-在斷網沙盒中執行 Shell 指令（適用於檔案檢視、單元測試、本機運算）：
-```json
-{
-  "tool": "execute_command",
-  "parameters": {
-    "command": "ls -la",
-    "timeout": 20
-  }
-}
-```
-
-### 2. 寫入檔案 (`write_file`)
-建立或覆寫工作區中的檔案（具備路徑防穿越機制）：
-```json
-{
-  "tool": "write_file",
-  "parameters": {
-    "path": "example.py",
-    "content": "print('Hello, world!')"
-  }
-}
-```
-
-### 3. GitHub / Git 操作 (`github_action`)
-由主機連網環境代為執行 Git 操作或呼叫 GitHub REST API：
-
-* **複製倉庫 (`clone`)**：
-```json
-{
-  "tool": "github_action",
-  "parameters": {
-    "action": "clone",
-    "params": {
-      "repo_url": "https://github.com/owner/repo.git",
-      "target_subfolder": "project_folder"
-    }
-  }
-}
-```
-
-* **擷取遠端分支資訊 (`fetch`)**：
-```json
-{
-  "tool": "github_action",
-  "parameters": {
-    "action": "fetch",
-    "params": {
-      "subfolder": "project_folder",
-      "remote": "origin"
-    }
-  }
-}
-```
-
-* **遠端拉取與同步 (`pull`)**：
-```json
-{
-  "tool": "github_action",
-  "parameters": {
-    "action": "pull",
-    "params": {
-      "subfolder": "project_folder",
-      "remote": "origin",
-      "branch": "main",
-      "force_reset": false
-    }
-  }
-}
-```
-
-* **推送工作區 (`push_workspace`)**：
-```json
-{
-  "tool": "github_action",
-  "parameters": {
-    "action": "push_workspace",
-    "params": {
-      "repo": "owner/repo",
-      "branch": "main",
-      "message": "Commit message",
-      "subfolder": "project_folder"
-    }
-  }
-}
-```
-
-* **其他 API 支援**：`get_repo`、`list_issues`、`create_issue`、`create_pull_request`、`get_file`。
-
----
-
-## 開發路線圖與待改進清單 (Roadmap & Backlog)
-
-### 終端與工具互動待改進清單 (實測反思與改進項目)
-在實際透過 LLM 進行本機操作與指令除錯時，觀察到以下幾個核心改進痛點：
-1. **基礎工具鏈與模組依賴缺失**：斷網沙盒映像檔預設缺少 `git` 等版本控制工具與必要 Python 套件（如 `fastapi`、`uvicorn`），導致在沙盒內部無法進行基本的腳本集成測試；未來沙盒鏡像應預裝常用開發輔助工具或支援依賴快取掛載。
-2. **原子化局部檔案編輯 (Partial Patch / Edit API)**：目前僅具備全量覆寫的 `write_file`，在修改大型原始碼或文件時容易引發 token 浪費及非預期全檔損毀風險；需儘速引入類似 `edit_file` 或 unified diff patch 機制。
-3. **非同步長時指令串流 (Command Streaming Output)**：`execute_command` 採整包同步等待（blocking timeout），在執行耗時指令（如套件編譯、依賴安裝）時無法即時看到 stdout 串流進度；應增加非同步 WebSocket / SSE 輸出通道。
-4. **靈活的 Git 操作擴充**：主機端 Git 需補齊多分支檢出（`checkout` / `switch`）、暫存（`stash`）以及對個別已修改檔案進行 stage / commit 的精確控制能力。
-
-### 開發路線圖 (Roadmap)
-1. **核心版本控制與 GitHub 深度整合 (GitHub & Git Integration) [已上線 / 持續優化]**
-   - [x] 主機代管 Git 核心操作（`clone`、`pull`、`fetch`、`push_workspace`）。
-   - [x] Docker 斷網沙盒安全隔離與主機網路操作分流架構。
-   - [x] REST API 檔案樹同步備用機制（適用於未配置 `.git` 環境）。
-   - [ ] 支援多分支切換（`checkout` / `switch`）與 Git Stash 工作流。
-   - [ ] 自動建立 PR、Issue 模板與 Code Review 建議自動注入。
-
-2. **檔案與指令執行體驗優化 (Execution & Tooling)**
-   - [ ] 支援原子化檔案編輯工具（`patch_file` / `replace_lines`），避免全量重寫風險。
-   - [ ] 指令執行支援長時串流輪詢（Streaming output），改善大型腳本反饋體驗。
-   - [ ] 沙盒基底映像檔預先整合常用除錯與靜態分析工具。
-
-3. **可攜性與部署體驗 (Portability & Packaging)**
-   - [ ] 提供單一二進位執行檔（PyInstaller / Go CLI），降低 Python 與 Docker 手動配置門檻。
-   - [ ] 支援純本機無 Docker 輕量隔離模式（適用於無 Docker 權限的主機環境）。
-
-4. **通訊與效能優化 (Latency & Communication)**
-   - [ ] 優化瀏覽器使用者腳本與後端的通訊效率，降低 DOM 輪詢與輸入延遲。
-   - [ ] 支援串流（Streaming）解析工具呼叫區塊，提早觸發後端執行。
-
-5. **自主 Agent 迴圈與提示工程 (Autonomous Behavior & Context)**
-   - [ ] 持續精煉 System Prompt，維持主動執行原則（嚴禁要求使用者手動複製貼上）。
-   - [ ] 自動修剪過長工具輸出，防止上下文長度超限與記憶體浪費。
-
----
-
-## 踩坑紀錄與已解決問題 (Troubleshooting & Known Issues)
-
-| # | 類別 | 遭遇問題（坑點） | 根本原因 | 解決方案 / 最佳實踐 |
+| # | 類別 | 遭遇問題 | 根本原因 | 解決方案 / 最佳實踐 |
 | :--- | :--- | :--- | :--- | :--- |
 | **01** | **安全防護** | 宿主機路徑穿越風險 | LLM 可透過 `cat ../` 或相對路徑存取沙盒外敏感檔案 | 工作區全面以 Docker 沙盒隔離，路徑鎖定於 `/workspace`，後端寫檔實作路徑防穿越校驗 |
 | **02** | **前端捕捉** | 連發指令漏抓第二條訊息 | 去重比對誤判、`isProcessing` 狀態未即時銜接 | 於 DOM 節點打上實體標記（`dataset.bridgeExecuted`）並加強輪詢防抖機制 |
 | **03** | **前端效能** | Console 狂跳 JSON 解析 Warning | 解析失敗節點未打已讀標記，導致輪詢重複解析拋錯 | 加入「失敗即標記」機制，當次失敗直接略過，終結死循環報錯 |
-| **04** | **字串傳輸** | Base64 寫檔失敗與 JSON 語法崩潰 | HTML/JS 包含大量引號、換行與 Markdown 轉義，破壞 Shell 與 JSON 結構 | 嚴禁在 Bash 硬塞多行程式碼，全面改由獨立 `write_file` API 傳遞內容 |
-| **05** | **驗證通訊** | 後端重啟後 Tampermonkey 出現 `403 Forbidden` | 伺服器重啟預設動態生成全新 `SESSION_TOKEN` | 同步更新 Tampermonkey 的 Token；或於 `.env` 設定靜態 Token |
-| **06** | **環境隔離** | 沙盒內無法執行 `git pull / push` | Docker 沙盒採 `--network none` 斷網且缺少 Host 憑證 | 將 Git 操作抽出為 `github_action`，改由主機端連網代管執行 |
-| **07** | **版本控制** | Git CLI 拉取失敗或非 Git 目錄 | 本機未安裝 Git、未加 PATH 或工作區未初始化 `.git` | 實作雙軌制：優先呼叫本機 Git CLI，失敗自動降級為 GitHub REST API 檔案樹同步 |
-| **08** | **檔案快取** | 程式碼修改後伺服器仍回傳「不支援此 Action」 | Python 記憶體快取舊模組，或工作區路徑層級寫錯位置 | 啟動加上 `--reload`；確認寫入路徑為當前執行的模組檔案 |
-| **09** | **文件維護** | 更新 `README.md` 時誤刪重要章節 | 重寫文件時未先對照舊有章節結構 | 修改文件採「先讀取檢視、增量補充」原則，保留已知問題與歷史紀錄 |
-| **10** | **前端監聽** | 腳本重複注入與點擊發送漏抓 Prompt | 單頁應用 (SPA) 導航或重複載入腳本，且僅監聽鍵盤 Enter 事件 | 加上 `window.__llm_local_bridge_loaded__` 全域守衛，並擴充點擊傳送按鈕監聽 |
+| **04** | **字串傳輸** | Base64 寫檔失敗與 JSON 語法崩潰 | HTML/JS 包含大量引號、換行與 Markdown 轉義，破壞 Shell 與 JSON 結構 | 嚴禁在 Bash 硬塞多行程式碼，全面改由獨立 `write_file` 或 `run_script` 傳遞 |
+| **05** | **跨平台相容** | Windows 執行 Shell 出現 `$'\r'` 錯誤 | Windows 系統預設輸出 CRLF (`\r\n`)，容器內的 Linux Bash 解析時會把 `\r` 當成檔名一部分 | 在後端 `write_workspace_file` 與 `run_transient_script` 實作自動正規化，強制替換為 LF (`\n`) |
+| **06** | **對話延遲** | 執行臨時除錯腳本需 3 輪對話 | 舊架構需手動歷經「寫入 $\to$ 執行 $\to$ 刪除」三次請求回傳 | 引入 `run_script` 暫存直譯器與 Batch Array 批次執行，縮短 70% 延遲 |
+| **07** | **限流防護** | Gemini 出現 1095 錯誤與頻繁限流 | 快速連續回傳觸發對話歷史膨脹與前端 DOM 連續送出 | 加入 1800ms 冷卻防護，並以批次打包減少對話輪次 |
