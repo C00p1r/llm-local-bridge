@@ -128,6 +128,8 @@ async def push_workspace_to_github(repo: str, branch: str = "main", message: str
     for root, dirs, files in os.walk(target_dir):
         dirs[:] = [d for d in dirs if d not in {".git", "__pycache__", "node_modules", ".venv", "venv", "workspace"}]
         for file in files:
+            if file in {".env", ".DS_Store", "Thumbs.db"} or file.endswith(".pyc"):
+                continue
             if file.startswith(".bridge_memory"):
                 continue
             full_path = Path(root) / file
