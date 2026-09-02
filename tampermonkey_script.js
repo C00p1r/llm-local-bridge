@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         LLM Local Bridge Agent (v4.3 - Dynamic Memory Injection)
+// @name         LLM Local Bridge Agent (v4.4 - Auto Reconnect & Multi-line Parsing)
 // @namespace    https://local.bridge/
-// @version      4.3
-// @description  LLM Local Bridge with dynamic workspace memory snapshot injection
+// @version      4.4
+// @description  LLM Local Bridge with dynamic workspace memory snapshot injection and multi-line parsing
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
 // @match        https://gemini.google.com/*
@@ -18,8 +18,14 @@
 (function () {
     'use strict';
 
+    if (window.__llm_local_bridge_loaded__) {
+        console.log('[LLM Local Bridge] 腳本已在當前頁面執行，略過重複載入。');
+        return;
+    }
+    window.__llm_local_bridge_loaded__ = true;
+
     console.log(
-        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.3 (Memory Enabled)',
+        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.4 (Memory & Multi-line Support)',
         'color:#22c55e;font-weight:bold;font-size:14px;'
     );
 
@@ -31,7 +37,7 @@
 2. 需要查看、執行、修改時：
    - 檢視目錄、檔案內容、執行測試、安裝依賴：使用 execute_command。
    - 建立、覆寫或修改檔案：使用 write_file。
-   - 查詢/建立 Issue、PR、讀取遠端倉庫檔案：使用 github_action。
+   - 查詢/建立 Issue、PR、讀取遠端倉庫檔案、Git 同步：使用 github_action。
 3. 工具呼叫規範：操作環境時僅輸出 tool_call 區塊，輸出後立刻停止生成，等待 [TOOL_RESULT]。
 
 ### 支援工具格式
@@ -57,17 +63,15 @@
 }
 \`\`\`
 
-3. GitHub 操作：
+3. GitHub / Git 操作：
 \`\`\`tool_call
 {
   "tool": "github_action",
   "parameters": {
-    "action": "push_workspace",
+    "action": "pull",
     "params": {
-      "repo": "owner/repo",
       "branch": "main",
-      "message": "Commit message",
-      "subfolder": "llm_local_bridge_copy"
+      "force_reset": false
     }
   }
 }
@@ -79,20 +83,24 @@
     let isExecuting = false;
     let isNewChat = true;
 
-    GM_registerMenuCommand('🔑 設定 / 更新 Local Bridge Token', () => {
-        const token = prompt('請輸入 Python 終端顯示的 Session Token:', sessionToken);
-        if (token) {
-            sessionToken = token.trim();
-            GM_setValue('session_token', sessionToken);
-            console.log('[Bridge] Session Token 已更新');
+    function promptForToken(forcePrompt = false) {
+        if (!sessionToken || forcePrompt) {
+            const token = prompt('請輸入 Python 終端顯示的 Session Token:', sessionToken || '');
+            if (token) {
+                sessionToken = token.trim();
+                GM_setValue('session_token', sessionToken);
+                console.log('[Bridge] Session Token 已更新並儲存');
+            }
         }
+        return sessionToken;
+    }
+
+    GM_registerMenuCommand('🔑 設定 / 更新 Local Bridge Token', () => {
+        promptForToken(true);
     });
 
     function fetchContextPrompt() {
-        if (!sessionToken) {
-            sessionToken = GM_getValue('session_token', '');
-        }
-
+        sessionToken = sessionToken || GM_getValue('session_token', '');
         return new Promise((resolve) => {
             GM_xmlhttpRequest({
                 method: 'GET',
@@ -120,8 +128,9 @@
     }
 
     function sendToBackend(payload) {
+        sessionToken = sessionToken || GM_getValue('session_token', '');
         if (!sessionToken) {
-            sessionToken = GM_getValue('session_token', '');
+            sessionToken = promptForToken(false);
         }
 
         console.log('%c[Bridge] → Backend', 'color:#f59e0b;font-weight:bold;', payload);
@@ -135,8 +144,14 @@
                     'Authorization': `Bearer ${sessionToken}`
                 },
                 data: JSON.stringify(payload),
-                timeout: 35000,
+                timeout: 65000,
                 onload: (res) => {
+                    if (res.status === 401 || res.status === 403) {
+                        console.warn('[Bridge] Token 無效或過期，請重新輸入。');
+                        promptForToken(true);
+                        reject(`驗證失敗 (${res.status}): Token 不正確`);
+                        return;
+                    }
                     if (res.status !== 200) {
                         reject(`Server Error ${res.status}: ${res.responseText}`);
                         return;
@@ -149,7 +164,7 @@
                         reject('Backend JSON Parse Error');
                     }
                 },
-                ontimeout: () => reject('執行逾時 (35s)'),
+                ontimeout: () => reject('執行逾時 (65s)'),
                 onerror: (e) => reject(`網路錯誤: ${e}`)
             });
         });
@@ -231,6 +246,29 @@
         return null;
     }
 
+    function parseMultiLineJson(rawText) {
+        let jsonCandidate = extractJSONObject(rawText);
+        if (!jsonCandidate) return null;
+
+        try {
+            return JSON.parse(jsonCandidate);
+        } catch (e1) {
+            try {
+                const normalized = jsonCandidate.replace(/\r\n|\r/g, '\n');
+                return JSON.parse(normalized);
+            } catch (e2) {
+                try {
+                    const sanitized = jsonCandidate.replace(/"(?:[^"\\]|\\.)*"/gs, (match) => {
+                        return match.replace(/\n/g, '\\n').replace(/\t/g, '\\t');
+                    });
+                    return JSON.parse(sanitized);
+                } catch (e3) {
+                    return null;
+                }
+            }
+        }
+    }
+
     function getNextToolCall() {
         const isChatGPT = location.hostname.includes('chatgpt') || location.hostname.includes('openai');
         let assistantMessages = [];
@@ -256,25 +294,11 @@
             const text = (el.innerText || el.textContent || '').trim();
             if (!text.includes('"tool"') || !text.includes('"parameters"')) continue;
 
-            const jsonStr = extractJSONObject(text);
-            if (!jsonStr) continue;
-
-            try {
-                const parsed = JSON.parse(jsonStr);
-                if (!parsed.tool || !parsed.parameters) continue;
-
+            const parsed = parseMultiLineJson(text);
+            if (parsed && parsed.tool && parsed.parameters) {
                 el.dataset.bridgeExecuted = 'true';
-                console.log('%c[Bridge] ✓ 偵測到 AI Tool Call', 'color:#38bdf8;font-weight:bold;', parsed.tool, parsed);
+                console.log('%c[Bridge] ✓ 成功解析 Tool Call', 'color:#38bdf8;font-weight:bold;', parsed.tool, parsed);
                 return { parsed, element: el };
-            } catch (err) {
-                try {
-                    const cleaned = jsonStr.replace(/\\n/g, "\\n");
-                    const parsed = JSON.parse(cleaned);
-                    if (parsed.tool && parsed.parameters) {
-                        el.dataset.bridgeExecuted = 'true';
-                        return { parsed, element: el };
-                    }
-                } catch (e) {}
             }
         }
         return null;
@@ -302,29 +326,48 @@
         }
     }, 700);
 
+    async function handleUserSend(e) {
+        if (!isNewChat) return;
+
+        const isChatGPT = location.hostname.includes('chatgpt') || location.hostname.includes('openai');
+        const inputEl = isChatGPT
+            ? document.querySelector('#prompt-textarea')
+            : document.querySelector('.ql-editor, div[contenteditable="true"], textarea');
+
+        if (!inputEl) return;
+
+        const val = inputEl.innerText || inputEl.value || '';
+        if (val.trim() && !val.startsWith('[SYSTEM INSTRUCTION')) {
+            if (e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            isNewChat = false;
+            console.log('[Bridge] 正在取得工作區快照並注入 Prompt...');
+            
+            const memoryContext = await fetchContextPrompt();
+            const fullPrompt = `${BASE_SYSTEM_PROMPT}\n${memoryContext}\n---\n使用者的輸入如下：\n${val.trim()}`;
+            
+            await submitToLLM(fullPrompt);
+        }
+    }
+
     document.addEventListener(
         'keydown',
         async (e) => {
-            if (e.key !== 'Enter' || e.shiftKey || !isNewChat) return;
+            if (e.key === 'Enter' && !e.shiftKey) {
+                await handleUserSend(e);
+            }
+        },
+        true
+    );
 
-            const isChatGPT = location.hostname.includes('chatgpt') || location.hostname.includes('openai');
-            const inputEl = isChatGPT
-                ? document.querySelector('#prompt-textarea')
-                : document.querySelector('.ql-editor, div[contenteditable="true"], textarea');
-
-            if (!inputEl || document.activeElement !== inputEl) return;
-
-            const val = inputEl.innerText || inputEl.value || '';
-            if (val.trim() && !val.startsWith('[SYSTEM INSTRUCTION')) {
-                e.preventDefault();
-                e.stopPropagation();
-                isNewChat = false;
-                console.log('[Bridge] 正在取得工作區快照並注入 Prompt...');
-                
-                const memoryContext = await fetchContextPrompt();
-                const fullPrompt = `${BASE_SYSTEM_PROMPT}\n${memoryContext}\n---\n使用者的輸入如下：\n${val.trim()}`;
-                
-                await submitToLLM(fullPrompt);
+    document.addEventListener(
+        'click',
+        async (e) => {
+            const target = e.target.closest('button[data-testid="send-button"], button[aria-label="Send prompt"], button.send-button, button[aria-label*="Send"], button[aria-label*="傳送"]');
+            if (target) {
+                await handleUserSend(e);
             }
         },
         true

@@ -8,7 +8,6 @@ import urllib.error
 from config import GITHUB_TOKEN, WORKSPACE_DIR
 import subprocess
 
-
 GITHUB_API_BASE = "https://api.github.com"
 
 def _make_request(url: str, method: str = "GET", data: Dict[str, Any] = None) -> Dict[str, Any]:
@@ -234,4 +233,18 @@ async def handle_github_action(action: str, params: Dict[str, Any]) -> Dict[str,
         private = params.get("private", False)
         subfolder = params.get("subfolder", "")
         return await push_workspace_to_repo(repo, branch=branch, commit_message=message, private=private, subfolder=subfolder)
+    elif action == "clone":
+        repo_url = params.get("repo_url") or params.get("repo", "")
+        target_subfolder = params.get("target_subfolder") or params.get("subfolder", "")
+        return git_clone(repo_url, target_subfolder)
+    elif action == "fetch":
+        subfolder = params.get("subfolder", "")
+        remote = params.get("remote", "origin")
+        return git_fetch(subfolder, remote)
+    elif action == "pull":
+        subfolder = params.get("subfolder", "")
+        remote = params.get("remote", "origin")
+        branch = params.get("branch", "main")
+        force_reset = params.get("force_reset", False)
+        return git_pull(subfolder, remote, branch, force_reset)
     return {"status": "error", "output": f"不支援的 GitHub action: {action}", "exit_code": -1}

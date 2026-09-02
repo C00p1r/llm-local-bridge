@@ -1,4 +1,5 @@
 import uvicorn
+import subprocess
 from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -23,6 +24,25 @@ class ExecuteRequest(BaseModel):
     tool: str
     parameters: Optional[Dict[str, Any]] = {}
 
+def check_docker_status() -> Dict[str, Any]:
+    """檢查宿主機 Docker 守護程式是否正常運行"""
+    try:
+        res = subprocess.run(
+            ["docker", "info"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=5
+        )
+        if res.returncode == 0:
+            return {"available": True, "message": "Docker 運行中"}
+        else:
+            return {"available": False, "message": f"Docker 未啟動或無回應: {res.stderr.strip()}"}
+    except FileNotFoundError:
+        return {"available": False, "message": "系統未偵測到 Docker 指令，請確認是否安裝並加入 PATH"}
+    except Exception as e:
+        return {"available": False, "message": f"Docker 檢查異常: {str(e)}"}
+
 async def verify_token(authorization: Optional[str] = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="[Bridge] 缺少或無效的 Authorization 標頭")
@@ -33,7 +53,12 @@ async def verify_token(authorization: Optional[str] = Header(None)):
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "message": "[Bridge] 伺服器運行正常"}
+    docker_status = check_docker_status()
+    return {
+        "status": "ok",
+        "message": "[Bridge] 伺服器運行正常",
+        "docker": docker_status
+    }
 
 @app.get("/context")
 async def get_context(token: str = Depends(verify_token)):
@@ -82,8 +107,6 @@ async def execute_tool(req: ExecuteRequest, token: str = Depends(verify_token)):
         print(f"[Bridge] 執行錯誤: {e}")
         return {"status": "error", "output": f"[Bridge] 伺服器內部錯誤: {str(e)}", "exit_code": -1}
 
-
-
 class GitCloneRequest(BaseModel):
     repo_url: str
     target_subfolder: str = ""
@@ -108,5 +131,10 @@ async def handle_git_pull(req: GitSyncRequest, authorized: bool = Depends(verify
 
 if __name__ == "__main__":
     print(f"[Bridge] 🚀 Server 啟動於 127.0.0.1:8000 (Token: {SESSION_TOKEN})")
+    docker_check = check_docker_status()
+    if docker_check["available"]:
+        print(f"[Bridge] 🐳 Docker 狀態: {docker_check['message']}")
+    else:
+        print(f"[Bridge] ⚠️ Docker 狀態警告: {docker_check['message']}")
     memory_manager.capture_snapshot()
     uvicorn.run(app, host="127.0.0.1", port=8000)
