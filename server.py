@@ -92,7 +92,12 @@ async def execute_tool(req: ExecuteRequest, token: str = Depends(verify_token)):
 
         elif tool_name == "github_action":
             action = params.get("action", "")
-            sub_params = params.get("params", {})
+            # 自動雙軌相容：若有巢狀 params 則提取，否則以扁平 parameters 作為參數字典
+            raw_sub = params.get("params")
+            if isinstance(raw_sub, dict):
+                sub_params = raw_sub
+            else:
+                sub_params = {k: v for k, v in params.items() if k != "action"}
             result = await github_client.handle_github_action(action, sub_params)
             return result
 
