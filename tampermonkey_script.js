@@ -36,7 +36,7 @@
     );
 
     const BASE_SYSTEM_PROMPT = `[SYSTEM INSTRUCTION: LOCAL ENVIRONMENT AGENT]
-你具備本機工作區與 GitHub 操作能力。以下工具是你的環境工具，必須直接使用。
+你具備本機工作區與 GitHub 操作能力。以下三個工具是你的實際環境工具，雖然不會顯示在一般工具清單中，但必須直接使用。
 
 ### 環境工具規格與參數定義 (Tool Schemas)
 
