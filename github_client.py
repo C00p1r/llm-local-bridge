@@ -109,10 +109,11 @@ async def push_workspace_to_github(repo: str, branch: str = "main", message: str
         "Content-Type": "application/json"
     }
     base_url = f"https://api.github.com/repos/{repo}"
-    base_proj_dir = Path(__file__).parent.resolve()
-    target_dir = (base_proj_dir / subfolder).resolve() if subfolder else base_proj_dir
+    
+    # 改以 WORKSPACE_DIR 為基準
+    target_dir = (WORKSPACE_DIR / subfolder).resolve() if subfolder else WORKSPACE_DIR
     if not target_dir.exists():
-        return {"status": "error", "output": f"指定的 subfolder 不存在: {target_dir}", "exit_code": -1}
+        return {"status": "error", "output": f"指定的目錄不存在: {target_dir}", "exit_code": -1}
 
     ref_res = _github_api_request("GET", f"{base_url}/git/refs/heads/{branch}", headers)
     if ref_res.get("error") or ref_res["status_code"] != 200:
@@ -153,39 +154,39 @@ async def push_workspace_to_github(repo: str, branch: str = "main", message: str
         return {"status": "error", "output": f"建立 Commit 失敗: {new_commit_res['status_code']} {new_commit_res['raw']}", "exit_code": new_commit_res["status_code"]}
     new_commit_sha = new_commit_res["data"]["sha"]
 
-    update_ref_res = _github_api_request("PATCH", f"{base_url}/git/refs/heads/{branch}", headers, payload={"sha": new_commit_sha, "force": False})
-    if not update_ref_res.get("error") and update_ref_res["status_code"] == 200:
-        return {"status": "success", "output": update_ref_res["raw"], "exit_code": 0}
-    else:
+    update_ref_res = _github_api_request("PATCH", f"{base_url}/git/refs/heads/{branch}", headers, payload={"sha": new_commit_sha})
+    if update_ref_res.get("error") or update_ref_res["status_code"] != 200:
         return {"status": "error", "output": f"更新分支失敗: {update_ref_res['status_code']} {update_ref_res['raw']}", "exit_code": update_ref_res["status_code"]}
 
+    return {"status": "success", "output": f"成功推送至 {repo} 的 {branch} 分支，Commit SHA: {new_commit_sha}", "exit_code": 0}
+
 async def handle_github_action(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
-    if action in ["push", "push_workspace"]:
-        repo = params.get("repo", "")
-        branch = params.get("branch", "main")
-        message = params.get("message", "Update from LLM Bridge")
-        subfolder = params.get("subfolder", "")
-        return await push_workspace_to_github(repo=repo, branch=branch, message=message, subfolder=subfolder)
+    action = action.lower()
+    if action in {"push", "push_workspace"}:
+        return await push_workspace_to_github(
+            repo=params.get("repo", ""),
+            branch=params.get("branch", "main"),
+            message=params.get("message", "Update from LLM Bridge"),
+            subfolder=params.get("subfolder", "")
+        )
     elif action == "pull":
-        subfolder = params.get("subfolder", "")
-        remote = params.get("remote", "origin")
-        branch = params.get("branch", "main")
-        force_reset = params.get("force_reset", False)
-        return git_pull(subfolder, remote, branch, force_reset)
+        return git_pull(
+            subfolder=params.get("subfolder", ""),
+            remote=params.get("remote", "origin"),
+            branch=params.get("branch", "main"),
+            force_reset=params.get("force_reset", False)
+        )
     elif action == "fetch":
-        subfolder = params.get("subfolder", "")
-        remote = params.get("remote", "origin")
-        return git_fetch(subfolder, remote)
+        return git_fetch(
+            subfolder=params.get("subfolder", ""),
+            remote=params.get("remote", "origin")
+        )
     elif action == "clone":
-        repo_url = params.get("repo_url", "")
-        target_subfolder = params.get("target_subfolder", "")
-        return git_clone(repo_url, target_subfolder)
-    elif action in ["list_actions", "list_available_actions"]:
+        return git_clone(
+            repo_url=params.get("repo_url", ""),
+            target_subfolder=params.get("target_subfolder", "")
+        )
+    elif action == "list_actions":
         return list_available_actions()
     else:
-        return {
-            "status": "error",
-            "output": f"未知的 GitHub Action: {action}。可使用 action: 'list_actions' 查詢支援清單。",
-            "available_actions": list(AVAILABLE_ACTIONS.keys()),
-            "exit_code": -1
-        }
+        return {"status": "error", "output": f"不支援的 GitHub action: {action}", "exit_code": -1}

@@ -32,7 +32,9 @@ except ModuleNotFoundError:
 
 custom_workspace = os.getenv("WORKSPACE_DIR")
 if custom_workspace:
-    WORKSPACE_DIR = Path(custom_workspace).resolve()
+    p = Path(custom_workspace)
+    # 若為絕對路徑直接採用；若為相對路徑，強制以 current_dir 為基準
+    WORKSPACE_DIR = p.resolve() if p.is_absolute() else (current_dir / p).resolve()
 else:
     WORKSPACE_DIR = (current_dir / "workspace").resolve()
 
