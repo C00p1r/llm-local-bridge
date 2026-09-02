@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         LLM Local Bridge Agent (v4.8.1 - Complete Schema & Metric Accuracy)
+// @name         LLM Local Bridge Agent (v4.9.0 - Precise Patch & replace_content)
 // @namespace    https://local.bridge/
-// @version      4.8.1
-// @description  LLM Local Bridge with comprehensive tool call schemas, batch execution, and percentage accuracy metrics
+// @version      4.9.0
+// @description  LLM Local Bridge with replace_content partial editing, batch execution, and percentage accuracy metrics
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
 // @match        https://gemini.google.com/*
@@ -31,7 +31,7 @@
     window.__llm_local_bridge_loaded__ = true;
 
     console.log(
-        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.8.1 (Complete Schema & Metric Accuracy)',
+        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.9.0 (Precise Patch & replace_content)',
         'color:#22c55e;font-weight:bold;font-size:14px;'
     );
 
@@ -40,17 +40,22 @@
 
 ### 環境工具規格與參數定義 (Tool Schemas)
 
-1. execute_command: 執行短指令或檢查指令。
+1. replace_content: 精確局部替換檔案內容（修改現有檔案時一律優先使用，杜絕覆寫遺漏與 Token 浪費）。
    參數:
-   - command (string, 必填): 要執行的 Shell 指令。
-   - timeout (int, 選填): 逾時秒數 (預設 20)。
+   - path (string, 必填): 工作區相對路徑。
+   - target (string, 必填): 原檔案中待替換的確切原始字串（必須在檔案中具備唯一性，若非唯一後端將報錯拒絕）。
+   - replacement (string, 必填): 欲替換成的新字串內容。
    範例:
    {
-     "tool": "execute_command",
-     "parameters": {"command": "ls -la", "timeout": 20}
+     "tool": "replace_content",
+     "parameters": {
+       "path": "server.py",
+       "target": "def old_func():\n    pass",
+       "replacement": "def new_func():\n    return True"
+     }
    }
 
-2. write_file: 建立或覆寫檔案。
+2. write_file: 建立新檔案或在必須全量重構時覆寫檔案。
    參數:
    - path (string, 必填): 工作區相對路徑。
    - content (string, 必填): 檔案文字內容。
@@ -60,7 +65,7 @@
      "parameters": {"path": "example.py", "content": "print('hello')"}
    }
 
-3. run_script: 在沙盒內執行暫存腳本 (自動清理暫存檔)。
+3. run_script: 在沙盒內執行暫存腳本 (自動建立隔離檔並保證清理)。
    參數:
    - code (string, 必填): 完整腳本程式碼。
    - language (string, 選填): 直譯器類型，支援 "python"、"bash"、"sh"、"node" (預設 "python")。
@@ -71,7 +76,17 @@
      "parameters": {"code": "import sys\nprint(sys.version)", "language": "python"}
    }
 
-4. github_action: 執行 GitHub / Git 操作。
+4. execute_command: 執行短指令或檢查指令。
+   參數:
+   - command (string, 必填): 要執行的 Shell 指令。
+   - timeout (int, 選填): 逾時秒數 (預設 20)。
+   範例:
+   {
+     "tool": "execute_command",
+     "parameters": {"command": "ls -la", "timeout": 20}
+   }
+
+5. github_action: 執行 GitHub / Git 操作。
    參數:
    - action (string, 必填): 支援 "push" | "push_workspace" | "pull" | "fetch" | "clone" | "list_actions"。
    - branch (string, 選填): 分支名稱 (預設 "main")。
@@ -93,8 +108,8 @@
    }
 
 ### 執行與呼叫原則
-- 操作檔案、環境或測試時優先調用工具，不要宣稱無法存取。
-- 修改檔案前先讀取原檔，避免內容遺漏。
+- 修改現有檔案時一律優先使用 replace_content，提供精確且唯一的上下文字串。
+- 僅在建立全新檔案時使用 write_file。
 - 多步驟操作可使用 JSON Array 批次呼叫 (支援 Fail-Fast 機制)。
 - 操作環境時，僅輸出 \`\`\`tool_call 區塊，等待系統回傳 [TOOL_RESULT] 後再接續分析。
 
@@ -102,12 +117,12 @@
 \`\`\`tool_call
 [
   {
-    "tool": "write_file",
-    "parameters": {"path": "test.txt", "content": "data"}
+    "tool": "replace_content",
+    "parameters": {"path": "config.py", "target": "DEBUG = False", "replacement": "DEBUG = True"}
   },
   {
     "tool": "execute_command",
-    "parameters": {"command": "cat test.txt", "timeout": 20}
+    "parameters": {"command": "python -m pytest", "timeout": 20}
   }
 ]
 \`\`\`
@@ -312,16 +327,6 @@
         console.log('[Bridge] 送出訊息');
         await new Promise((r) => setTimeout(r, 1500));
         return true;
-    }
-
-    function unescapeJsonString(str) {
-        if (!str) return '';
-        return str
-            .replace(/\\"/g, '"')
-            .replace(/\\r/g, '\r')
-            .replace(/\\n/g, '\n')
-            .replace(/\\t/g, '\t')
-            .replace(/\\\\/g, '\\');
     }
 
     function parseMultiLineJson(rawText) {

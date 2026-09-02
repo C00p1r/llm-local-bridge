@@ -77,11 +77,52 @@ def write_workspace_file(path: str, content: str) -> dict:
     except Exception as e:
         return {"status": "error", "output": f"[Bridge] Failed to write file: {str(e)}", "exit_code": -1}
 
+def replace_file_content(path: str, target: str, replacement: str) -> dict:
+    """
+    局部精確替換檔案內容：
+    1. 驗證路徑安全性。
+    2. 檢查檔案是否存在。
+    3. 嚴格唯一性驗證：target 必須在原檔中剛好出現 1 次。
+    4. 換行符統一正規化為 \n。
+    """
+    try:
+        target_path = (Path(WORKSPACE_DIR) / path).resolve()
+        workspace_path = Path(WORKSPACE_DIR).resolve()
+        if not str(target_path).startswith(str(workspace_path)):
+            return {"status": "error", "output": "[Bridge] Path out of workspace", "exit_code": -1}
+        if not target_path.exists() or not target_path.is_file():
+            return {"status": "error", "output": f"[Bridge] File not found: {path}", "exit_code": -1}
+
+        raw_file_content = target_path.read_text(encoding='utf-8')
+        norm_file = raw_file_content.replace("\r\n", "\n").replace("\r", "\n")
+        norm_target = target.replace("\r\n", "\n").replace("\r", "\n")
+        norm_replacement = replacement.replace("\r\n", "\n").replace("\r", "\n")
+
+        occurrences = norm_file.count(norm_target)
+        if occurrences == 0:
+            return {
+                "status": "error",
+                "output": f"[Bridge] 替換目標不存在 (0 次相符)。請確認 target 與檔案內容完全吻合。",
+                "exit_code": -1
+            }
+        if occurrences > 1:
+            return {
+                "status": "error",
+                "output": f"[Bridge] 替換目標不具唯一性 (出現 {occurrences} 次)。請提供更多上下文以確保精確匹配。",
+                "exit_code": -1
+            }
+
+        updated_content = norm_file.replace(norm_target, norm_replacement, 1)
+        target_path.write_text(updated_content, encoding='utf-8', newline='\n')
+        return {
+            "status": "success",
+            "output": f"File {path} updated successfully via replace_content",
+            "exit_code": 0
+        }
+    except Exception as e:
+        return {"status": "error", "output": f"[Bridge] Failed to replace file content: {str(e)}", "exit_code": -1}
+
 async def run_transient_script(code: str, language: str = "python", timeout: int = DEFAULT_TIMEOUT_SEC) -> dict:
-    """
-    執行暫存腳本：支援 python、bash、sh 等直譯器，沙盒內執行完畢後確保清理。
-    統一換行符為 \n，防止 Windows CRLF 導致容器內 bash 執行失敗。
-    """
     lang_clean = language.lower().strip()
     ext_map = {
         "python": (".py", "python"),

@@ -91,6 +91,14 @@ async def _execute_single_tool(tool_name: str, params: Dict[str, Any]) -> dict:
         memory_manager.capture_snapshot()
         return res
 
+    elif tool_name == "replace_content":
+        path = params.get("path", "")
+        target = params.get("target", "")
+        replacement = params.get("replacement", "")
+        res = executor.replace_file_content(path, target, replacement)
+        memory_manager.capture_snapshot()
+        return res
+
     elif tool_name == "github_action":
         action = params.get("action", "")
         raw_sub = params.get("params")
