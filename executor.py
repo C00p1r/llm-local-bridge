@@ -402,7 +402,15 @@ def search_codebase(query: str, path: str = "", include_pattern: str = "", max_r
             if include_pattern:
                 cmd.extend(["-g", include_pattern])
             cmd.extend(["--", query, str(target_dir)])
-            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15)
+            res = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=15
+            )
             if res.stdout:
                 rg_line_regex = re.compile(r"^(.*?):(\d+):(.*)$")
                 for line in res.stdout.splitlines()[:max_results]:
