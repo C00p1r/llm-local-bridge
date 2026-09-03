@@ -4,6 +4,8 @@ import os
 import stat
 import subprocess
 import difflib
+import shutil
+import re
 from pathlib import Path
 from typing import Optional
 from config import WORKSPACE_DIR, MAX_OUTPUT_CHARS, DEFAULT_TIMEOUT_SEC
