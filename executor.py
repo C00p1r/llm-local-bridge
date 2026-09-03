@@ -11,6 +11,15 @@ from config import WORKSPACE_DIR, MAX_OUTPUT_CHARS, DEFAULT_TIMEOUT_SEC
 # 容器映像檔（包含常用執行環境）
 DOCKER_IMAGE = "python:3.11-slim"
 
+def _get_docker_user_args() -> list:
+    """在 POSIX / WSL 環境自動對齊宿主機 UID:GID，防止產生 root 唯讀檔案鎖死宿主操作"""
+    try:
+        if hasattr(os, "getuid") and hasattr(os, "getgid"):
+            return ["--user", f"{os.getuid()}:{os.getgid()}"]
+    except Exception:
+        pass
+    return []
+
 async def run_shell_command(command: str, timeout: int = DEFAULT_TIMEOUT_SEC) -> dict:
     import asyncio
     workspace_abs = str(Path(WORKSPACE_DIR).resolve())
@@ -21,6 +30,7 @@ async def run_shell_command(command: str, timeout: int = DEFAULT_TIMEOUT_SEC) ->
         "--network", "none",
         "--cpus", "2.0",
         "--memory", "1g",
+        *(_get_docker_user_args()),
         "-v", f"{workspace_abs}:/workspace:rw",
         "-w", "/workspace",
         DOCKER_IMAGE,
@@ -252,18 +262,19 @@ def get_workspace_git_diff(path: str = "") -> dict:
             text=True,
             timeout=10
         )
+        stdout_text = (res.stdout or "").strip()
+        stderr_text = (res.stderr or "").strip()
         if res.returncode == 0:
-            diff_output = res.stdout.strip()
             return {
                 "status": "success",
-                "output": diff_output or "[No Git Diffs - Working tree clean]",
+                "output": stdout_text or "[No Git Diffs - Working tree clean]",
                 "exit_code": 0
             }
         else:
             # 若環境未安裝 git 或非 git repo
             return {
                 "status": "error",
-                "output": f"[Bridge] git diff 執行失敗: {res.stderr.strip() or 'Exit code ' + str(res.returncode)}",
+                "output": f"[Bridge] git diff 執行失敗: {stderr_text or 'Exit code ' + str(res.returncode)}",
                 "exit_code": res.returncode
             }
     except FileNotFoundError:
@@ -274,3 +285,96 @@ def get_workspace_git_diff(path: str = "") -> dict:
         }
     except Exception as e:
         return {"status": "error", "output": f"[Bridge] 取得 git diff 異常: {str(e)}", "exit_code": -1}
+
+def list_workspace_dir(path: str = "", max_depth: int = 3) -> dict:
+    """
+    結構化掃描目錄樹，自動忽略 .git, __pycache__, node_modules, .venv 等噪音目錄，大幅節省 Token。
+    """
+    try:
+        target_dir = (Path(WORKSPACE_DIR) / path).resolve() if path else Path(WORKSPACE_DIR).resolve()
+        workspace_path = Path(WORKSPACE_DIR).resolve()
+        if not str(target_dir).startswith(str(workspace_path)):
+            return {"status": "error", "output": "[Bridge] Path out of workspace", "exit_code": -1}
+        if not target_dir.exists() or not target_dir.is_dir():
+            return {"status": "error", "output": f"[Bridge] Directory not found: {path}", "exit_code": -1}
+
+        ignored_names = {".git", "__pycache__", "node_modules", ".venv", "venv", ".idea", ".vscode"}
+        tree_lines = []
+
+        def _walk(current_dir: Path, prefix: str, depth: int):
+            if depth > max_depth:
+                return
+            try:
+                entries = sorted(list(current_dir.iterdir()), key=lambda e: (not e.is_dir(), e.name.lower()))
+            except Exception:
+                return
+            filtered = [e for e in entries if e.name not in ignored_names and not e.name.startswith(".temp_")]
+            count = len(filtered)
+            for i, entry in enumerate(filtered):
+                is_last = (i == count - 1)
+                connector = "└── " if is_last else "├── "
+                display_name = f"{entry.name}/" if entry.is_dir() else entry.name
+                tree_lines.append(f"{prefix}{connector}{display_name}")
+                if entry.is_dir():
+                    new_prefix = prefix + ("    " if is_last else "│   ")
+                    _walk(entry, new_prefix, depth + 1)
+
+        tree_lines.append(f"{target_dir.name or 'workspace'}/")
+        _walk(target_dir, "", 1)
+
+        return {
+            "status": "success",
+            "output": "\n".join(tree_lines),
+            "exit_code": 0
+        }
+    except Exception as e:
+        return {"status": "error", "output": f"[Bridge] Failed to list dir: {str(e)}", "exit_code": -1}
+
+def get_file_outline(path: str) -> dict:
+    """
+    基於 AST 快速解析 Python 檔案符號大綱（Class / Function / Method）及其所在行號。
+    """
+    try:
+        target_path = (Path(WORKSPACE_DIR) / path).resolve()
+        workspace_path = Path(WORKSPACE_DIR).resolve()
+        if not str(target_path).startswith(str(workspace_path)):
+            return {"status": "error", "output": "[Bridge] Path out of workspace", "exit_code": -1}
+        if not target_path.exists() or not target_path.is_file():
+            return {"status": "error", "output": f"[Bridge] File not found: {path}", "exit_code": -1}
+        if not path.endswith(".py"):
+            return {"status": "error", "output": "[Bridge] get_outline 目前僅支援 Python (.py) 原始碼檔案。", "exit_code": -1}
+
+        content = target_path.read_text(encoding='utf-8')
+        try:
+            tree = ast.parse(content, filename=path)
+        except SyntaxError as se:
+            return {"status": "error", "output": f"[Bridge] 語法錯誤解析失敗: line {se.lineno}: {se.msg}", "exit_code": -1}
+
+        outline_items = []
+
+        def _extract(node, depth=0):
+            indent = "  " * depth
+            for child in getattr(node, "body", []):
+                if isinstance(child, ast.ClassDef):
+                    line = getattr(child, "lineno", 0)
+                    end_line = getattr(child, "end_lineno", line)
+                    outline_items.append(f"{indent}class {child.name} (L{line}-L{end_line})")
+                    _extract(child, depth + 1)
+                elif isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    line = getattr(child, "lineno", 0)
+                    end_line = getattr(child, "end_lineno", line)
+                    prefix_type = "async def" if isinstance(child, ast.AsyncFunctionDef) else "def"
+                    args = [a.arg for a in child.args.args]
+                    outline_items.append(f"{indent}{prefix_type} {child.name}({', '.join(args)}) (L{line}-L{end_line})")
+                    _extract(child, depth + 1)
+
+        _extract(tree, 0)
+        output_text = "\n".join(outline_items) if outline_items else "[No classes or functions found]"
+
+        return {
+            "status": "success",
+            "output": output_text,
+            "exit_code": 0
+        }
+    except Exception as e:
+        return {"status": "error", "output": f"[Bridge] Failed to get outline: {str(e)}", "exit_code": -1}

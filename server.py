@@ -109,6 +109,15 @@ async def _execute_single_tool(tool_name: str, params: Dict[str, Any]) -> dict:
         path = params.get("path", "")
         return executor.get_workspace_git_diff(path)
 
+    elif tool_name == "list_dir":
+        path = params.get("path", "")
+        max_depth = params.get("max_depth", 3)
+        return executor.list_workspace_dir(path, max_depth=max_depth)
+
+    elif tool_name == "get_outline":
+        path = params.get("path", "")
+        return executor.get_file_outline(path)
+
     elif tool_name == "github_action":
         action = params.get("action", "")
         raw_sub = params.get("params")

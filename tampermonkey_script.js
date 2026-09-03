@@ -127,6 +127,25 @@
      "parameters": {}
    }
 
+8. list_dir: 結構化掃描目錄樹，自動忽略 .git, __pycache__, node_modules, .venv 等噪音目錄，大幅節省 Token。
+   參數:
+   - path (string, 選填): 工作區相對目錄路徑 (留空代表根目錄)。
+   - max_depth (int, 選填): 掃描深度 (預設 3)。
+   範例:
+   {
+     "tool": "list_dir",
+     "parameters": {"path": "", "max_depth": 2}
+   }
+
+9. get_outline: 基於 AST 解析 Python 檔案符號大綱（Class / Function / Method）及其所在行號，快速定位 target。
+   參數:
+   - path (string, 必填): Python 檔案相對路徑。
+   範例:
+   {
+     "tool": "get_outline",
+     "parameters": {"path": "server.py"}
+   }
+
 ### 執行與呼叫原則
 - 修改現有檔案時一律優先使用 replace_content，提供精確且唯一的上下文字串。
 - 僅在建立全新檔案時使用 write_file。
