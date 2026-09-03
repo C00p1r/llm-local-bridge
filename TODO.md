@@ -24,6 +24,8 @@
 - [x] **`get_outline` 程式碼大綱感知**
   - **實作**：基於 AST 解析 `.py` 檔案之 class / function 簽名與行號範圍，快速定位 target。
 
-### [Phase 3: RAG 模組與本機記憶檢索 (Planned)]
-- [ ] **向量庫與檢索架構設計**：輕量化本機檢索與 CodeRAG 支援。
-- [ ] **工作區上下文檢索 API**：提供切片與相關性搜尋工具。
+### [Phase 3: 靜態檢索與符號導航 (Completed)]
+- [x] **`search_codebase` 全文關鍵字與正則檢索**
+  - **實作**：優先使用 `rg` (ripgrep) CLI，回退至原生 `Path.rglob()`，自動過濾常見建置與相依性噪音目錄。
+- [x] **`find_references` 符號定義與呼叫點導航**
+  - **實作**：基於單詞邊界匹配與定義語法判斷，分離 `definitions` 與 `usages`，提供跨檔案修改前防爆網。

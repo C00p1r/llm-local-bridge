@@ -378,3 +378,107 @@ def get_file_outline(path: str) -> dict:
         }
     except Exception as e:
         return {"status": "error", "output": f"[Bridge] Failed to get outline: {str(e)}", "exit_code": -1}
+
+def search_codebase(query: str, path: str = "", include_pattern: str = "", max_results: int = 50) -> dict:
+    """
+    全專案文字或正則檢索。優先使用 ripgrep (rg)，若無則回退至 Python 原生目錄走訪。
+    """
+    try:
+        target_dir = (Path(WORKSPACE_DIR) / path).resolve() if path else Path(WORKSPACE_DIR).resolve()
+        workspace_path = Path(WORKSPACE_DIR).resolve()
+        if not str(target_dir).startswith(str(workspace_path)):
+            return {"status": "error", "output": "[Bridge] Path out of workspace", "exit_code": -1}
+        if not target_dir.exists():
+            return {"status": "error", "output": f"[Bridge] Path not found: {path}", "exit_code": -1}
+
+        results = []
+        rg_path = shutil.which("rg")
+        if rg_path:
+            cmd = [rg_path, "--line-number", "--no-heading", "--color=never", "--max-count", str(max_results)]
+            for ignored in [".git", "node_modules", "__pycache__", ".venv", "venv", "target", "dist"]:
+                cmd.extend(["-g", f"!{ignored}"])
+            if include_pattern:
+                cmd.extend(["-g", include_pattern])
+            cmd.extend(["-e", query, str(target_dir)])
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15)
+            if res.stdout:
+                for line in res.stdout.splitlines()[:max_results]:
+                    parts = line.split(":", 2)
+                    if len(parts) == 3:
+                        rel_f = str(Path(parts[0]).resolve().relative_to(workspace_path)).replace("\\", "/")
+                        results.append({"file": rel_f, "line": int(parts[1]), "content": parts[2].strip()})
+        else:
+            # Python 原生回退走訪
+            ignored_dirs = {".git", "node_modules", "__pycache__", ".venv", "venv", "target", "dist"}
+            pattern = re.compile(query, re.IGNORECASE)
+            glob_pat = include_pattern if include_pattern else "*"
+            for item in target_dir.rglob(glob_pat):
+                if len(results) >= max_results:
+                    break
+                if not item.is_file() or any(p in item.parts for p in ignored_dirs):
+                    continue
+                try:
+                    lines = item.read_text(encoding="utf-8", errors="ignore").splitlines()
+                    for idx, line in enumerate(lines, start=1):
+                        if pattern.search(line):
+                            rel_f = str(item.resolve().relative_to(workspace_path)).replace("\\", "/")
+                            results.append({"file": rel_f, "line": idx, "content": line.strip()})
+                            if len(results) >= max_results:
+                                break
+                except Exception:
+                    continue
+
+        return {
+            "status": "success",
+            "matches_count": len(results),
+            "results": results,
+            "exit_code": 0
+        }
+    except Exception as e:
+        return {"status": "error", "output": f"[Bridge] Search codebase failed: {str(e)}", "exit_code": -1}
+
+def find_references(symbol: str, file_type: str = "", scope_dir: str = "") -> dict:
+    """
+    尋找特定符號（Class / Function / Method / Variable）之定義處與使用處。
+    """
+    try:
+        target_dir = (Path(WORKSPACE_DIR) / scope_dir).resolve() if scope_dir else Path(WORKSPACE_DIR).resolve()
+        workspace_path = Path(WORKSPACE_DIR).resolve()
+        if not str(target_dir).startswith(str(workspace_path)):
+            return {"status": "error", "output": "[Bridge] Path out of workspace", "exit_code": -1}
+        if not symbol or not symbol.strip():
+            return {"status": "error", "output": "[Bridge] symbol 參數不能為空", "exit_code": -1}
+
+        ignored_dirs = {".git", "node_modules", "__pycache__", ".venv", "venv", "target", "dist"}
+        glob_pat = f"*.{file_type.lstrip('.')}" if file_type else "*"
+        sym_regex = re.compile(rf"\b{re.escape(symbol.strip())}\b")
+        def_regex = re.compile(rf"\b(class|def|async\s+def|function|interface|type|struct|fn|enum|record)\s+{re.escape(symbol.strip())}\b")
+
+        definitions = []
+        usages = []
+
+        for item in target_dir.rglob(glob_pat):
+            if not item.is_file() or any(p in item.parts for p in ignored_dirs):
+                continue
+            try:
+                lines = item.read_text(encoding="utf-8", errors="ignore").splitlines()
+                for idx, line in enumerate(lines, start=1):
+                    if sym_regex.search(line):
+                        rel_f = str(item.resolve().relative_to(workspace_path)).replace("\\", "/")
+                        entry = {"file": rel_f, "line": idx, "content": line.strip()}
+                        if def_regex.search(line):
+                            definitions.append(entry)
+                        else:
+                            usages.append(entry)
+            except Exception:
+                continue
+
+        return {
+            "status": "success",
+            "symbol": symbol,
+            "definitions": definitions,
+            "usages": usages,
+            "exit_code": 0
+        }
+    except Exception as e:
+        return {"status": "error", "output": f"[Bridge] Find references failed: {str(e)}", "exit_code": -1}

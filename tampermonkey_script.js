@@ -146,6 +146,29 @@
      "parameters": {"path": "server.py"}
    }
 
+10. search_codebase: 全專案全文關鍵字或正則檢索（全域雷達），快速定位變數、API 路徑與配置項。
+    參數:
+    - query (string, 必填): 搜尋關鍵字或正則表達式。
+    - path (string, 選填): 限定子目錄（預設根目錄）。
+    - include_pattern (string, 選填): 檔案過濾（如 *.py, *.java, *.ts）。
+    - max_results (int, 選填): 最大筆數（預設 50）。
+    範例:
+    {
+      "tool": "search_codebase",
+      "parameters": {"query": "run_transient_script", "include_pattern": "*.py"}
+    }
+
+11. find_references: 尋找 Symbol（類別/函式/變數）的定義處與所有呼叫點，修改前進行衝擊分析。
+    參數:
+    - symbol (string, 必填): 標識符名稱。
+    - file_type (string, 選填): 語言副檔名（如 py, java, ts）。
+    - scope_dir (string, 選填): 限制搜尋目錄。
+    範例:
+    {
+      "tool": "find_references",
+      "parameters": {"symbol": "run_transient_script"}
+    }
+
 ### 執行與呼叫原則
 - 修改現有檔案時一律優先使用 replace_content，提供精確且唯一的上下文字串。
 - 僅在建立全新檔案時使用 write_file。

@@ -118,6 +118,19 @@ async def _execute_single_tool(tool_name: str, params: Dict[str, Any]) -> dict:
         path = params.get("path", "")
         return executor.get_file_outline(path)
 
+    elif tool_name == "search_codebase":
+        query = params.get("query", "")
+        path = params.get("path", "")
+        include_pattern = params.get("include_pattern", "")
+        max_results = int(params.get("max_results", 50))
+        return executor.search_codebase(query, path=path, include_pattern=include_pattern, max_results=max_results)
+
+    elif tool_name == "find_references":
+        symbol = params.get("symbol", "")
+        file_type = params.get("file_type", "")
+        scope_dir = params.get("scope_dir", "")
+        return executor.find_references(symbol, file_type=file_type, scope_dir=scope_dir)
+
     elif tool_name == "github_action":
         action = params.get("action", "")
         raw_sub = params.get("params")
