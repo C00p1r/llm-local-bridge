@@ -404,11 +404,16 @@ def search_codebase(query: str, path: str = "", include_pattern: str = "", max_r
             cmd.extend(["-e", query, str(target_dir)])
             res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15)
             if res.stdout:
+                rg_line_regex = re.compile(r"^(.*?):(\d+):(.*)$")
                 for line in res.stdout.splitlines()[:max_results]:
-                    parts = line.split(":", 2)
-                    if len(parts) == 3:
-                        rel_f = str(Path(parts[0]).resolve().relative_to(workspace_path)).replace("\\", "/")
-                        results.append({"file": rel_f, "line": int(parts[1]), "content": parts[2].strip()})
+                    match = rg_line_regex.match(line)
+                    if match:
+                        file_path_str, line_num, content = match.group(1), match.group(2), match.group(3)
+                        try:
+                            rel_f = str(Path(file_path_str).resolve().relative_to(workspace_path)).replace("\\", "/")
+                        except ValueError:
+                            rel_f = file_path_str.replace("\\", "/")
+                        results.append({"file": rel_f, "line": int(line_num), "content": content.strip()})
         else:
             # Python 原生回退走訪
             ignored_dirs = {".git", "node_modules", "__pycache__", ".venv", "venv", "target", "dist"}
