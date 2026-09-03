@@ -107,6 +107,26 @@
      "parameters": {"action": "pull", "branch": "main", "subfolder": "", "force_reset": false}
    }
 
+6. read_file: 結構化讀取檔案內容，支援指定行號區間並附帶行號，杜絕換行轉義與盲猜 target。
+   參數:
+   - path (string, 必填): 工作區相對路徑。
+   - start_line (int, 選填): 起始行號 (從 1 開始)。
+   - end_line (int, 選填): 結束行號。
+   範例:
+   {
+     "tool": "read_file",
+     "parameters": {"path": "server.py", "start_line": 1, "end_line": 30}
+   }
+
+7. git_diff: 檢視工作區相對於 Git HEAD 的 unified diff，確保推送到 GitHub 前修改乾淨且精確。
+   參數:
+   - path (string, 選填): 工作區子目錄或相對路徑 (預設工作區根目錄)。
+   範例:
+   {
+     "tool": "git_diff",
+     "parameters": {}
+   }
+
 ### 執行與呼叫原則
 - 修改現有檔案時一律優先使用 replace_content，提供精確且唯一的上下文字串。
 - 僅在建立全新檔案時使用 write_file。

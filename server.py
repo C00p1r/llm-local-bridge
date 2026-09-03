@@ -99,6 +99,16 @@ async def _execute_single_tool(tool_name: str, params: Dict[str, Any]) -> dict:
         memory_manager.capture_snapshot()
         return res
 
+    elif tool_name == "read_file":
+        path = params.get("path", "")
+        start_line = params.get("start_line")
+        end_line = params.get("end_line")
+        return executor.read_workspace_file(path, start_line=start_line, end_line=end_line)
+
+    elif tool_name == "git_diff":
+        path = params.get("path", "")
+        return executor.get_workspace_git_diff(path)
+
     elif tool_name == "github_action":
         action = params.get("action", "")
         raw_sub = params.get("params")
