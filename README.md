@@ -137,6 +137,11 @@
 * Docker（用於指令沙盒執行）
 * Git CLI（已安裝並加入系統 PATH）
 * 瀏覽器 Tampermonkey 擴充功能
+* **ripgrep (`rg`)（選用 / 強烈推薦）**：
+  * 用於提供 `search_codebase` 極速檢索能力。若未安裝，Bridge 會自動回退至 Python 原生走訪；若需檢索大型專案建議安裝：
+    * Ubuntu / Debian: `sudo apt install ripgrep`
+    * macOS: `brew install ripgrep`
+    * Windows (Scoop / Winget): `winget install BurntSushi.ripgrep.MSVC` 或 `scoop install ripgrep`
 
 ### 2. Windows / WSL 整合安裝說明 (WSL Integration Guide)
 若你在 Windows 平台上開發，強烈建議搭配 **WSL 2 (Windows Subsystem for Linux)** 與 **Docker Desktop**：
