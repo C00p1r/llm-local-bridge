@@ -1,5 +1,12 @@
 # Changelog & Release Notes
 
+## v4.9.0 (2026-09-03)
+- **Docker Sandbox Permission Alignment**: 動態注入 `_get_docker_user_args` (`--user <uid>:<gid>`)，防止容器以 root 建立檔案鎖死宿主機 Python 讀寫權限 (`PermissionDenied`)。
+- **Structured Tree Perception (`list_dir`)**: 實作輕量目錄樹掃描，自動排除 `.git`、`__pycache__`、`node_modules`、`.venv` 等噪音目錄，大幅節省 context token。
+- **AST Code Outline Perception (`get_outline`)**: 支援基於 AST 解析 Python 原始碼之 Class、Function、Method 名稱與行號區間，協助 `replace_content` 快速精準鎖定目標字串。
+- **Git Diff Robustness Safeguard**: 修復 `get_workspace_git_diff` 在 `res.stdout` 或 `res.stderr` 為 `None` 時引發的 `'NoneType' object has no attribute 'strip'` 異常。
+- **System Prompt & Schemas Sync**: 更新 Tampermonkey 前端腳本，補齊 `list_dir` 與 `get_outline` 工具 Schema 定義與呼叫範例。
+
 ## v4.8.1 (2026-09-03)
 - **Complete Tool Schemas in System Prompt**: Fully specified parameter types, required/optional flags, and default values for `execute_command`, `write_file`, `run_script`, and `github_action` in Tampermonkey's injected instruction.
 - **Metric Accuracy Percentage Display**: Updated the floating status badge to display real-time success rate with percentage formatting (`Bridge: 5/5 (100.0%)`).
