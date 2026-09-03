@@ -401,7 +401,7 @@ def search_codebase(query: str, path: str = "", include_pattern: str = "", max_r
                 cmd.extend(["-g", f"!{ignored}"])
             if include_pattern:
                 cmd.extend(["-g", include_pattern])
-            cmd.extend(["-e", query, str(target_dir)])
+            cmd.extend(["--", query, str(target_dir)])
             res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=15)
             if res.stdout:
                 rg_line_regex = re.compile(r"^(.*?):(\d+):(.*)$")
