@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         LLM Local Bridge Agent (v4.9.0 - Precise Patch & replace_content)
+// @name         LLM Local Bridge Agent (v4.10.0 - Codebase Radar & Symbol Navigation)
 // @namespace    https://local.bridge/
-// @version      4.9.0
-// @description  LLM Local Bridge with replace_content partial editing, batch execution, and percentage accuracy metrics
+// @version      4.10.0
+// @description  LLM Local Bridge with codebase search, find references, replace_content partial editing, and batch execution
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
 // @match        https://gemini.google.com/*
@@ -31,7 +31,7 @@
     window.__llm_local_bridge_loaded__ = true;
 
     console.log(
-        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.9.0 (Precise Patch & replace_content)',
+        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.10.0 (Codebase Radar & Symbol Navigation)',
         'color:#22c55e;font-weight:bold;font-size:14px;'
     );
 
