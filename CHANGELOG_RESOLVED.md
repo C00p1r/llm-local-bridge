@@ -1,10 +1,9 @@
 # Changelog & Release Notes
 
-## v4.10.0 (2026-09-03)
-- **Codebase Radar (`search_codebase`)**: 引入全專案靜態字串與正則檢索，優先調用 `ripgrep (rg)` 並具備 Python 原生走訪回退，支援副檔名過濾與輸出上限截斷。
-- **Symbol Navigation (`find_references`)**: 實作精確符號定義與調用點分析，自動區分 `definitions` 與 `usages`，為連鎖重構提供變更衝擊防爆網。
-- **System Prompt & Schemas Sync**: 更新 Tampermonkey 注入之 System Prompt，擴充第 10 與第 11 項工具規格與調用範例。
-- **Roadmap Pivot**: Phase 3 捨棄重型向量庫，聚焦高確定性、零相依之多語言靜態檢索。
+## v4.10.1 (2026-09-04)
+- **Git Tool Expansion (`git_checkout`, `git_branch`, `git_clean`)**: 完善 Git 工具鏈，新增 `git_checkout` 單檔復原與分支切換能力，修復 `git_diff` 在 Windows 上的路徑解析 (`WinError 267`)。
+- **Robust GitHub Actions Integration**: 統一扁平化參數傳遞，修復 `git_push` 缺少 repo 參數與分支獲取 404 問題。
+- **Documentation & Changelog Synchronization**: 更新 README 與 TODO 進度，確認 Phase 5 Git 功能完備與高風險指令隔離策略。
 
 ## v4.9.0 (2026-09-03)
 - **Docker Sandbox Permission Alignment**: 動態注入 `_get_docker_user_args` (`--user <uid>:<gid>`)，防止容器以 root 建立檔案鎖死宿主機 Python 讀寫權限 (`PermissionDenied`)。
