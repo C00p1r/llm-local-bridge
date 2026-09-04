@@ -30,7 +30,7 @@
 * `memory_manager.py`：專案快照與記憶體管理，動態維護工作區目錄結構與環境狀態。
 * `config.py`：環境與安全設定（工作區路徑、逾時時間、字數限制、Token 生成）。
 * `launcher.py`：一鍵啟動腳本，自動檢查 Docker 與環境依賴。
-* `tampermonkey_script.js`：瀏覽器使用者腳本 (v4.10.0)，負責攔截對話、解析單一/批次 Tool Call、回填 `[TOOL_RESULT]` 並顯示即時調用成功率 (Badge %)。
+* `tampermonkey_script.js`：瀏覽器使用者腳本 (v4.11.0)，負責攔截對話、解析單一/批次 Tool Call、回填 `[TOOL_RESULT]` 並顯示即時調用成功率 (Badge %)。
 * `requirements.txt`：Python 後端依賴套件清單。
 
 ---

@@ -1,6 +1,7 @@
 # Changelog & Release Notes
 
-## v4.10.1 (2026-09-04)
+## v4.11.0 (2026-09-04)
+- **Tampermonkey Script v4.11.0 Upgrade**: 同步更新前端使用者腳本至 v4.11.0，正式支援擴充之安全 Git 工具鏈（status, log, blame, branch, clean, checkout）。
 - **Git Tool Expansion (`git_checkout`, `git_branch`, `git_clean`)**: 完善 Git 工具鏈，新增 `git_checkout` 單檔復原與分支切換能力，修復 `git_diff` 在 Windows 上的路徑解析 (`WinError 267`)。
 - **Robust GitHub Actions Integration**: 統一扁平化參數傳遞，修復 `git_push` 缺少 repo 參數與分支獲取 404 問題。
 - **Documentation & Changelog Synchronization**: 更新 README 與 TODO 進度，確認 Phase 5 Git 功能完備與高風險指令隔離策略。
