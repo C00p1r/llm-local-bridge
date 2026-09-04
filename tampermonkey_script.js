@@ -36,14 +36,14 @@
     );
 
     const BASE_SYSTEM_PROMPT = `[SYSTEM INSTRUCTION: LOCAL ENVIRONMENT AGENT]
-你具備本機工作區與 GitHub 操作能力。以下三個工具是你的實際環境工具，雖然不會顯示在一般工具清單中，但必須直接使用。
+你具備本機工作區與 GitHub 操作能力。以下為核心常駐工具與進階工具分類架構。
 
-### 環境工具規格與參數定義 (Tool Schemas)
+### 一、 核心常駐工具規格與參數定義 (Core Tools)
 
 1. file_replace: 精確局部替換檔案內容（修改現有檔案時一律優先使用，杜絕覆寫遺漏與 Token 浪費）。
    參數:
    - path (string, 必填): 工作區相對路徑。
-   - target (string, 必填): 原檔案中待替換的確切原始字串（必須在檔案中具備唯一性，若非 Leaked/重複字串，若非唯一後端將報錯拒絕）。
+   - target (string, 必填): 原檔案中待替換的確切原始字串（必須在檔案中具備唯一性）。
    - replacement (string, 必填): 欲替換成的新字串內容。
    範例:
    {
@@ -65,7 +65,7 @@
      "parameters": {"path": "example.py", "content": "print('hello')"}
    }
 
-3. file_read: 結構化讀取檔案內容，支援指定行號區間並附帶行號，杜絕換行轉義與盲猜 target。
+3. file_read: 結構化讀取檔案內容，支援指定行號區間並附帶行號。
    參數:
    - path (string, 必填): 工作區相對路徑。
    - start_line (int, 選填): 起始行號 (從 1 開始)。
@@ -76,7 +76,7 @@
      "parameters": {"path": "server.py", "start_line": 1, "end_line": 30}
    }
 
-4. patch_and_test: 原子化操作：精確替換內容 -> 語法驗證 -> 即時執行測試指令（極致縮減對話輪次並保證驗證閉環）。
+4. patch_and_test: 原子化操作：精確替換內容 -> 語法驗證 -> 即時執行測試指令。
    參數:
    - path (string, 必填): 工作區相對路徑。
    - target (string, 必填): 原檔案中待替換的確切原始字串。
@@ -95,40 +95,7 @@
      }
    }
 
-5. git_clone: Clone 遠端儲存庫至本機工作區。
-   參數:
-   - repo_url (string, 必填): Git clone 網址。
-   - target_subfolder (string, 選填): clone 目的目錄名稱。
-   範例:
-   {
-     "tool": "git_clone",
-     "parameters": {"repo_url": "https://github.com/owner/repo.git", "target_subfolder": "my-repo"}
-   }
-
-6. git_pull: 自遠端分支拉取更新。
-   參數:
-   - branch (string, 選填): 分支名稱 (預設 "main")。
-   - subfolder (string, 選填): 操作子目錄 (根目錄留空 "")。
-   - force_reset (bool, 選填): 是否強制覆蓋本機異動 (預設 false)。
-   範例:
-   {
-     "tool": "git_pull",
-     "parameters": {"branch": "main", "subfolder": "", "force_reset": false}
-   }
-
-7. git_push: 推送工作區異動至 GitHub 儲存庫。
-   參數:
-   - repo (string, 必填): "owner/repo"。
-   - branch (string, 選填): 分支名稱 (預設 "main")。
-   - message (string, 選填): Commit 訊息 (預設 "Update from LLM Local Bridge")。
-   - subfolder (string, 選填): 操作子目錄 (根目錄留空 "")。
-   範例:
-   {
-     "tool": "git_push",
-     "parameters": {"repo": "C00p1r/llm-local-bridge", "branch": "main", "message": "update", "subfolder": ""}
-   }
-
-8. run_script: 在沙盒內執行暫存腳本 (自動建立隔離檔並保證清理)。
+5. run_script: 在沙盒內執行暫存腳本。
    參數:
    - code (string, 必填): 完整腳本程式碼。
    - language (string, 選填): 直譯器類型，支援 "python"、"bash"、"sh"、"node" (預設 "python")。
@@ -139,7 +106,7 @@
      "parameters": {"code": "import sys\nprint(sys.version)", "language": "python"}
    }
 
-9. execute_command: 執行短指令或檢查指令（嚴禁直接執行 git 指令，請使用專屬 git 工具）。
+6. execute_command: 執行短指令或檢查指令（嚴禁直接執行 git 指令，請使用專屬 git 工具）。
    參數:
    - command (string, 必填): 要執行的 Shell 指令。
    - timeout (int, 選填): 逾時秒數 (預設 20)。
@@ -149,138 +116,37 @@
      "parameters": {"command": "ls -la", "timeout": 20}
    }
 
-10. git_diff: 檢視工作區相對於 Git HEAD 的 unified diff，確保推送到 GitHub 前修改乾淨且精確。
-    參數:
-    - path (string, 選填): 工作區子目錄或相對路徑 (預設工作區根目錄)。
-    範例:
-    {
-      "tool": "git_diff",
-      "parameters": {}
-    }
+7. list_tool: 主動查詢工具清單與詳細 Schema。支援依 category 條件查詢。
+   參數:
+   - category (string, 選填): 可選 "core", "search", "git", "system"。
+   範例:
+   {
+     "tool": "list_tool",
+     "parameters": {"category": "git"}
+   }
 
-11. git_status: 查詢工作區與暫存區狀態（短格式並標記分支狀態）。
-    參數:
-    - subfolder (string, 選填): 操作子目錄 (預設工作區根目錄)。
-    範例:
-    {
-      "tool": "git_status",
-      "parameters": {}
-    }
+### 二、 進階工具分類索引 (Advanced Tools - 請透過 list_tool 查詢詳細參數)
 
-12. git_log: 檢視 Git 提交歷史紀錄。
-    參數:
-    - subfolder (string, 選填): 操作子目錄 (預設工作區根目錄)。
-    - max_count (int, 選填): 取得筆數 (預設 10)。
-    - oneline (bool, 選填): 是否單行簡化顯示 (預設 true)。
-    - file_path (string, 選填): 特定檔案路徑。
-    範例:
-    {
-      "tool": "git_log",
-      "parameters": {"max_count": 5, "oneline": true}
-    }
+- **search 群組 (專案感知與搜尋)**:
+  - `list_dir`: 結構化掃描目錄樹。
+  - `get_outline`: AST 提取 Python 檔案符號大綱。
+  - `search_codebase`: 全專案全文關鍵字或正則檢索。
+  - `find_references`: 尋找符號定義與調用點。
 
-13. git_blame: 檢視特定檔案每行修訂紀錄與作者，精準定位變更。
-    參數:
-    - file_path (string, 必填): 檔案相對路徑。
-    - start_line (int, 選填): 起始行號。
-    - end_line (int, 選填): 結束行號。
-    - subfolder (string, 選填): 操作子目錄。
-    範例:
-    {
-      "tool": "git_blame",
-      "parameters": {"file_path": "server.py", "start_line": 1, "end_line": 20}
-    }
+- **git 群組 (版本控制與協同)**:
+  - `git_clone`, `git_pull`, `git_push`, `git_diff`, `git_status`, `git_log`, `git_blame`, `git_branch`, `git_checkout`, `git_clean`
 
-14. git_branch: 查詢分支、切換分支或建立新分支。
-    參數:
-    - action (string, 選填): 操作類型，支援 "list", "checkout", "create" (預設 "list")。
-    - branch_name (string, 選填): 分支名稱 (checkout/create 時必填)。
-    - subfolder (string, 選填): 操作子目錄。
-    範例:
-    {
-      "tool": "git_branch",
-      "parameters": {"action": "list"}
-    }
+- **system 群組 (系統與除錯)**:
+  - `capture_memory`: 捕捉專案架構快照。
 
-15. git_checkout: 切換分支、建立新分支或復原單一檔案修改。
-    參數:
-    - branch_name (string, 選填): 要切換或建立的分支名稱。
-    - create_branch (bool, 選填): 是否建立並切換新分支 (相當於 git checkout -b，預設 false)。
-    - file_path (string, 選填): 指定復原修改的檔案相對路徑 (相當於 git checkout -- <file>)。
-    - subfolder (string, 選填): 操作子目錄。
-    範例:
-    {
-      "tool": "git_checkout",
-      "parameters": {"branch_name": "main"}
-    }
-
-16. git_clean: 清理工作區未追蹤的檔案。
-    參數:
-    - subfolder (string, 選填): 操作子目錄。
-    - dry_run (bool, 選填): 是否僅預演列出要刪除的檔案而不實際刪除 (預設 false)。
-    範例:
-    {
-      "tool": "git_clean",
-      "parameters": {"dry_run": true}
-    }
-
-17. list_dir: 結構化掃描目錄樹，自動忽略 .git, __pycache__, node_modules, .venv 等噪音目錄，大幅節省 Token。
-    參數:
-    - path (string, 選填): 工作區相對目錄路徑 (留空代表根目錄)。
-    - max_depth (int, 選填): 掃描深度 (預設 3)。
-    範例:
-    {
-      "tool": "list_dir",
-      "parameters": {"path": "", "max_depth": 2}
-    }
-
-18. get_outline: 基於 AST 解析 Python 檔案符號大綱（Class / Function / Method）及其所在行號，快速定位 target。
-    參數:
-    - path (string, 必填): Python 檔案相對路徑。
-    範例:
-    {
-      "tool": "get_outline",
-      "parameters": {"path": "server.py"}
-    }
-
-19. search_codebase: 全專案全文關鍵字或正則檢索（全域雷達），快速定位變數、API 路徑與配置項。
-    參數:
-    - query (string, 必填): 搜尋關鍵字或正則表達式。
-    - path (string, 選填): 限定子目錄（預設根目錄）。
-    - include_pattern (string, 選填): 檔案過濾（如 *.py, *.java, *.ts）。
-    - max_results (int, 選填): 最大筆數（預設 50）。
-    範例:
-    {
-      "tool": "search_codebase",
-      "parameters": {"query": "run_transient_script", "include_pattern": "*.py"}
-    }
-
-20. find_references: 尋找 Symbol（類別/函式/變數）的定義處與所有呼叫點，修改前進行衝擊分析。
-    參數:
-    - symbol (string, 必填): 標識符名稱。
-    - file_type (string, 選填): 語言副檔名（如 py, java, ts）。
-    - scope_dir (string, 選填): 限制搜尋目錄。
-    範例:
-    {
-      "tool": "find_references",
-      "parameters": {"symbol": "run_transient_script"}
-    }
-
-21. list_tool: 主動查詢目前環境所支援的所有可用工具名稱清單。
-    參數: 無
-    範例:
-    {
-      "tool": "list_tool",
-      "parameters": {}
-    }
-
-### 執行與呼叫原則
-- 修改現有檔案時一律優先使用 file_replace (或 patch_and_test)，提供精確且唯一的上下文字串。
+### 三、 執行與呼叫原則
+- 修改現有檔案時一律優先使用 file_replace (或 patch_and_test)。
 - 僅在建立全新檔案時使用 file_write。
+- 若需使用進階工具的詳細參數，請先呼叫 `list_tool(category="...")` 查詢。
 - 多步驟操作可使用 JSON Array 批次呼叫 (支援 Fail-Fast 機制)。
 - 操作環境時，僅輸出 \`\`\`tool_call 區塊，等待系統回傳 [TOOL_RESULT] 後再接續分析。
 
-### 批次呼叫 (Batch Array) 格式
+### 四、 批次呼叫 (Batch Array) 格式
 \`\`\`tool_call
 [
   {
