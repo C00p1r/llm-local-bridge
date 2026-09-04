@@ -85,7 +85,8 @@ SUPPORTED_TOOLS = [
     "get_outline",
     "search_codebase",
     "find_references",
-    "capture_memory"
+    "capture_memory",
+    "list_tool"
 ]
 
 async def _execute_single_tool(tool_name: str, params: Dict[str, Any]) -> dict:
@@ -179,6 +180,14 @@ async def _execute_single_tool(tool_name: str, params: Dict[str, Any]) -> dict:
     elif tool_name == "capture_memory":
         snapshot = memory_manager.capture_snapshot()
         return {"status": "success", "output": "專案架構快照已更新", "snapshot": snapshot}
+
+    elif tool_name == "list_tool":
+        return {
+            "status": "success",
+            "total_tools": len(SUPPORTED_TOOLS),
+            "tools": SUPPORTED_TOOLS,
+            "exit_code": 0
+        }
 
     else:
         import difflib

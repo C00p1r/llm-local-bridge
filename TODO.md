@@ -23,3 +23,47 @@
   - **實作**：將原本巢狀的 `github_action` 拆解為一級工具，並保留 `github_action` 向下相容。
 - [x] **6. 檔案操作規範化命名與移除舊版相容 (`file_read` / `file_replace` / `file_write`)**
   - **實作**：在 `server.py` 與 `tampermonkey_script.js` 全面移除舊別名（`read_file`, `write_file`, `replace_content`, `github_action`），統一 15 個標準工具規範化命名。
+
+### [Phase 5: 工具自省與全功能 Git 擴展 (In Progress)]
+- [x] **1. 實作 `list_tool` 工具**
+  - **實作**：在 `server.py` 註冊 `list_tool` 並同步更新 `tampermonkey_script.js` 提示詞，支援 LLM 主動查詢可用工具清單。
+- [ ] **2. 完整 Git 功能擴展與實作**
+  - **Init / Clone**
+    - [x] `git clone` (已具備 `git_clone`)
+    - [ ] `git init` (儲存庫本機初始化)
+    - [ ] 移除 Git 倉庫 (`rm -rf .git` 防護封裝)
+  - **Remote 遠端操作**
+    - [ ] `git remote -v` (查詢遠端連結)
+    - [ ] `git remote add <name> <url>` (新增遠端連結)
+    - [ ] `git remote set-url <name> <url>` (修改遠端連結)
+    - [ ] `git remote remove <name>` (移除遠端連結)
+    - [ ] `git push -u <remote> <branch>` (推送並追蹤分支)
+  - **基本版更 (Status / Add / Commit / Pull / Push)**
+    - [x] `git pull` (已具備 `git_pull`，含 `--force_reset`)
+    - [x] `git push` (已具備 `git_push` GitHub API 推送)
+    - [ ] `git status` (查詢當前工作區狀態)
+    - [ ] `git add <file>` / `git add .` (暫存檔案)
+    - [ ] `git commit -m <msg>` (本機 Commit)
+    - [ ] `git restore --staged <file>` (取消暫存)
+    - [ ] `git pull --rebase` (以 rebase 方式拉取)
+  - **檔案復原與清理**
+    - [ ] `git clean -fd` (清除未追蹤檔案)
+    - [ ] `git restore <file>` / `git checkout <file>` (回復檔案修改)
+  - **Branch 分支應用**
+    - [ ] `git branch` / `git branch -a` (查詢本地與遠端分支)
+    - [ ] `git branch <name> [commit]` (建立新分支)
+    - [ ] `git checkout <branch>` / `git checkout -b <new>` (切換/新建並切換分支)
+    - [ ] `git branch -d` / `git branch -D` (刪除/強制刪除分支)
+    - [ ] `git branch -m` (分支更名)
+  - **Reset 版本回退**
+    - [ ] `git reset [--soft|--mixed|--hard] <commit>` (重設至特定版本/HEAD~N)
+  - **Rebase & Merge 合併操作**
+    - [ ] `git rebase <branch>` (變基分支)
+    - [ ] `git merge <branch>` (合併分支)
+  - **查詢與歷史紀錄 (Log / Blame / Reflog)**
+    - [x] `git diff` (已具備 `git_diff`)
+    - [ ] `git log` (一般/單行 `--oneline`/樹狀圖 `--graph`)
+    - [ ] `git log -p <file>` (檔案詳細變更紀錄)
+    - [ ] `git blame <file>` (逐行追蹤作者與修改時間)
+    - [ ] `git reflog` (查詢操作歷史)
+    - [ ] `git config --list` / `git --version` (查詢 Git 設定與版本)

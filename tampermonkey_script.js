@@ -200,6 +200,14 @@
       "parameters": {"symbol": "run_transient_script"}
     }
 
+15. list_tool: 主動查詢目前環境所支援的所有可用工具名稱清單。
+    參數: 無
+    範例:
+    {
+      "tool": "list_tool",
+      "parameters": {}
+    }
+
 ### 執行與呼叫原則
 - 修改現有檔案時一律優先使用 file_replace (或 patch_and_test)，提供精確且唯一的上下文字串。
 - 僅在建立全新檔案時使用 file_write。
