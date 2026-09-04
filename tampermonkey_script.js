@@ -546,7 +546,7 @@
             const errorFeedback = {
                 status: 'error',
                 error_type: 'JSON_SYNTAX_ERROR',
-                output: '[Bridge 格式解析失敗] 您輸出的 tool_call 無法解析為標準 JSON。\n請檢查括號對稱性（例如勿輸出 [{]} 或 [{]]）、引號閉合與跳脫字元。\n\n標準範例:\n```tool_call\n[\n  {\n    "tool": "read_file",\n    "parameters": {"path": "example.py"}\n  }\n]\n```',
+                output: '[Bridge 格式解析失敗] 您輸出的 tool_call 無法解析為標準 JSON。\n請檢查括號對稱性（例如勿輸出 [{]} 或 [{]]）、引號閉合與跳脫字元。\n\n標準範例:\n```tool_call\n[\n  {\n    "tool": "file_read",\n    "parameters": {"path": "example.py"}\n  }\n]\n```',
                 raw_received: target.rawSnippet,
                 exit_code: -1
             };
