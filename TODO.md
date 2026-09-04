@@ -41,18 +41,16 @@
   - **基本版更 (Status / Add / Commit / Pull / Push)**
     - [x] `git pull` (已具備 `git_pull`，含 `--force_reset`)
     - [x] `git push` (已具備 `git_push` GitHub API 推送)
-    - [ ] `git status` (查詢當前工作區狀態)
+    - [x] `git status` (查詢當前工作區狀態，已具備 `git_status`)
     - [ ] `git add <file>` / `git add .` (暫存檔案)
     - [ ] `git commit -m <msg>` (本機 Commit)
     - [ ] `git restore --staged <file>` (取消暫存)
     - [ ] `git pull --rebase` (以 rebase 方式拉取)
   - **檔案復原與清理**
-    - [ ] `git clean -fd` (清除未追蹤檔案)
+    - [x] `git clean -fd` (清除未追蹤檔案，已具備 `git_clean`，支援 `--dry_run`)
     - [ ] `git restore <file>` / `git checkout <file>` (回復檔案修改)
   - **Branch 分支應用**
-    - [ ] `git branch` / `git branch -a` (查詢本地與遠端分支)
-    - [ ] `git branch <name> [commit]` (建立新分支)
-    - [ ] `git checkout <branch>` / `git checkout -b <new>` (切換/新建並切換分支)
+    - [x] `git branch` (支援 list / checkout / create，已具備 `git_branch`)
     - [ ] `git branch -d` / `git branch -D` (刪除/強制刪除分支)
     - [ ] `git branch -m` (分支更名)
   - **Reset 版本回退**
@@ -62,8 +60,7 @@
     - [ ] `git merge <branch>` (合併分支)
   - **查詢與歷史紀錄 (Log / Blame / Reflog)**
     - [x] `git diff` (已具備 `git_diff`)
-    - [ ] `git log` (一般/單行 `--oneline`/樹狀圖 `--graph`)
-    - [ ] `git log -p <file>` (檔案詳細變更紀錄)
-    - [ ] `git blame <file>` (逐行追蹤作者與修改時間)
+    - [x] `git log` (已具備 `git_log`，支援 `--max_count`, `--oneline`, `--file_path`)
+    - [x] `git blame <file>` (逐行追蹤作者與修改時間，已具備 `git_blame`)
     - [ ] `git reflog` (查詢操作歷史)
     - [ ] `git config --list` / `git --version` (查詢 Git 設定與版本)

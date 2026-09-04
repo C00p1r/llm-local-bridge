@@ -81,6 +81,11 @@ SUPPORTED_TOOLS = [
     "git_pull",
     "git_push",
     "git_diff",
+    "git_status",
+    "git_log",
+    "git_blame",
+    "git_branch",
+    "git_clean",
     "list_dir",
     "get_outline",
     "search_codebase",
@@ -96,7 +101,7 @@ async def _execute_single_tool(tool_name: str, params: Dict[str, Any]) -> dict:
         if cmd.startswith("git ") or cmd == "git":
             return {
                 "status": "error",
-                "output": "[Bridge 格式防護] 禁止透過 execute_command 執行 git 指令。請改用專屬的 git_pull / git_push / git_clone / git_diff 工具以確保授權與工作區安全性。",
+                "output": "[Bridge 格式防護] 禁止透過 execute_command 執行 git 指令。請改用專屬的 git 工具 (如 git_status, git_diff, git_log, git_blame, git_branch, git_clean, git_pull, git_push, git_clone) 以確保工作區安全性。",
                 "exit_code": -1
             }
         timeout = params.get("timeout", 30)
@@ -145,6 +150,21 @@ async def _execute_single_tool(tool_name: str, params: Dict[str, Any]) -> dict:
     elif tool_name == "git_diff":
         path = params.get("path", "")
         return executor.get_workspace_git_diff(path)
+
+    elif tool_name == "git_status":
+        return await github_client.handle_github_action("status", params)
+
+    elif tool_name == "git_log":
+        return await github_client.handle_github_action("log", params)
+
+    elif tool_name == "git_blame":
+        return await github_client.handle_github_action("blame", params)
+
+    elif tool_name == "git_branch":
+        return await github_client.handle_github_action("branch", params)
+
+    elif tool_name == "git_clean":
+        return await github_client.handle_github_action("clean", params)
 
     elif tool_name == "list_dir":
         path = params.get("path", "")

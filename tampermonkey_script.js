@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         LLM Local Bridge Agent (v4.10.0 - Codebase Radar & Symbol Navigation)
+// @name         LLM Local Bridge Agent (v4.11.0 - Extended Safe Git Tools)
 // @namespace    https://local.bridge/
-// @version      4.10.0
-// @description  LLM Local Bridge with codebase search, find references, replace_content partial editing, and batch execution
+// @version      4.11.0
+// @description  LLM Local Bridge with codebase search, symbol navigation, safe git tools (status, log, blame, branch, clean), and batch execution
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
 // @match        https://gemini.google.com/*
@@ -31,7 +31,7 @@
     window.__llm_local_bridge_loaded__ = true;
 
     console.log(
-        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.10.0 (Codebase Radar & Symbol Navigation)',
+        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.11.0 (Extended Safe Git Tools)',
         'color:#22c55e;font-weight:bold;font-size:14px;'
     );
 
@@ -158,7 +158,61 @@
       "parameters": {}
     }
 
-11. list_dir: 結構化掃描目錄樹，自動忽略 .git, __pycache__, node_modules, .venv 等噪音目錄，大幅節省 Token。
+11. git_status: 查詢工作區與暫存區狀態（短格式並標記分支狀態）。
+    參數:
+    - subfolder (string, 選填): 操作子目錄 (預設工作區根目錄)。
+    範例:
+    {
+      "tool": "git_status",
+      "parameters": {}
+    }
+
+12. git_log: 檢視 Git 提交歷史紀錄。
+    參數:
+    - subfolder (string, 選填): 操作子目錄 (預設工作區根目錄)。
+    - max_count (int, 選填): 取得筆數 (預設 10)。
+    - oneline (bool, 選填): 是否單行簡化顯示 (預設 true)。
+    - file_path (string, 選填): 特定檔案路徑。
+    範例:
+    {
+      "tool": "git_log",
+      "parameters": {"max_count": 5, "oneline": true}
+    }
+
+13. git_blame: 檢視特定檔案每行修訂紀錄與作者，精準定位變更。
+    參數:
+    - file_path (string, 必填): 檔案相對路徑。
+    - start_line (int, 選填): 起始行號。
+    - end_line (int, 選填): 結束行號。
+    - subfolder (string, 選填): 操作子目錄。
+    範例:
+    {
+      "tool": "git_blame",
+      "parameters": {"file_path": "server.py", "start_line": 1, "end_line": 20}
+    }
+
+14. git_branch: 查詢分支、切換分支或建立新分支。
+    參數:
+    - action (string, 選填): 操作類型，支援 "list", "checkout", "create" (預設 "list")。
+    - branch_name (string, 選填): 分支名稱 (checkout/create 時必填)。
+    - subfolder (string, 選填): 操作子目錄。
+    範例:
+    {
+      "tool": "git_branch",
+      "parameters": {"action": "list"}
+    }
+
+15. git_clean: 清理工作區未追蹤的檔案。
+    參數:
+    - subfolder (string, 選填): 操作子目錄。
+    - dry_run (bool, 選填): 是否僅預演列出要刪除的檔案而不實際刪除 (預設 false)。
+    範例:
+    {
+      "tool": "git_clean",
+      "parameters": {"dry_run": true}
+    }
+
+16. list_dir: 結構化掃描目錄樹，自動忽略 .git, __pycache__, node_modules, .venv 等噪音目錄，大幅節省 Token。
     參數:
     - path (string, 選填): 工作區相對目錄路徑 (留空代表根目錄)。
     - max_depth (int, 選填): 掃描深度 (預設 3)。
@@ -168,7 +222,7 @@
       "parameters": {"path": "", "max_depth": 2}
     }
 
-12. get_outline: 基於 AST 解析 Python 檔案符號大綱（Class / Function / Method）及其所在行號，快速定位 target。
+17. get_outline: 基於 AST 解析 Python 檔案符號大綱（Class / Function / Method）及其所在行號，快速定位 target。
     參數:
     - path (string, 必填): Python 檔案相對路徑。
     範例:
@@ -177,7 +231,7 @@
       "parameters": {"path": "server.py"}
     }
 
-13. search_codebase: 全專案全文關鍵字或正則檢索（全域雷達），快速定位變數、API 路徑與配置項。
+18. search_codebase: 全專案全文關鍵字或正則檢索（全域雷達），快速定位變數、API 路徑與配置項。
     參數:
     - query (string, 必填): 搜尋關鍵字或正則表達式。
     - path (string, 選填): 限定子目錄（預設根目錄）。
@@ -189,7 +243,7 @@
       "parameters": {"query": "run_transient_script", "include_pattern": "*.py"}
     }
 
-14. find_references: 尋找 Symbol（類別/函式/變數）的定義處與所有呼叫點，修改前進行衝擊分析。
+19. find_references: 尋找 Symbol（類別/函式/變數）的定義處與所有呼叫點，修改前進行衝擊分析。
     參數:
     - symbol (string, 必填): 標識符名稱。
     - file_type (string, 選填): 語言副檔名（如 py, java, ts）。
@@ -200,7 +254,7 @@
       "parameters": {"symbol": "run_transient_script"}
     }
 
-15. list_tool: 主動查詢目前環境所支援的所有可用工具名稱清單。
+20. list_tool: 主動查詢目前環境所支援的所有可用工具名稱清單。
     參數: 無
     範例:
     {
@@ -215,10 +269,10 @@
 - 操作環境時，僅輸出 \`\`\`tool_call 區塊，等待系統回傳 [TOOL_RESULT] 後再接續分析。
 
 ### 批次呼叫 (Batch Array) 格式
-\`\`\`tool_call
+```tool_call
 [
   {
-    "tool": "replace_content",
+    "tool": "file_replace",
     "parameters": {"path": "config.py", "target": "DEBUG = False", "replacement": "DEBUG = True"}
   },
   {
@@ -226,7 +280,7 @@
     "parameters": {"command": "python -m pytest", "timeout": 20}
   }
 ]
-\`\`\`
+```
 `;
 
     let sessionToken = GM_getValue('session_token', '');
