@@ -30,13 +30,13 @@
 - [ ] **2. 完整 Git 功能擴展與實作**
   - **Init / Clone**
     - [x] `git clone` (已具備 `git_clone`)
-    - [ ] `git init` (儲存庫本機初始化)
-    - [ ] 移除 Git 倉庫 (`rm -rf .git` 防護封裝)
+    - [ ] `git init` ⚠️ [危險指令 - 易覆蓋/錯置儲存庫環境，暫不開放]
+    - [ ] 移除 Git 倉庫 (`rm -rf .git`) ⚠️ [高危破壞性指令 - 禁止開放]
   - **Remote 遠端操作**
     - [ ] `git remote -v` (查詢遠端連結)
-    - [ ] `git remote add <name> <url>` (新增遠端連結)
-    - [ ] `git remote set-url <name> <url>` (修改遠端連結)
-    - [ ] `git remote remove <name>` (移除遠端連結)
+    - [ ] `git remote add <name> <url>` ⚠️ [危險指令 - 涉及敏感遠端覆蓋，暫不開放]
+    - [ ] `git remote set-url <name> <url>` ⚠️ [危險指令 - 涉及敏感遠端覆蓋，暫不開放]
+    - [ ] `git remote remove <name>` ⚠️ [危險指令 - 易造成斷連風險，暫不開放]
     - [ ] `git push -u <remote> <branch>` (推送並追蹤分支)
   - **基本版更 (Status / Add / Commit / Pull / Push)**
     - [x] `git pull` (已具備 `git_pull`，含 `--force_reset`)
@@ -45,19 +45,20 @@
     - [ ] `git add <file>` / `git add .` (暫存檔案)
     - [ ] `git commit -m <msg>` (本機 Commit)
     - [ ] `git restore --staged <file>` (取消暫存)
-    - [ ] `git pull --rebase` (以 rebase 方式拉取)
+    - [ ] `git pull --rebase` ⚠️ [高危指令 - 易發生非預期衝突與歷史變更，暫不開放]
   - **檔案復原與清理**
     - [x] `git clean -fd` (清除未追蹤檔案，已具備 `git_clean`，支援 `--dry_run`)
-    - [ ] `git restore <file>` / `git checkout <file>` (回復檔案修改)
+    - [x] `git restore <file>` / `git checkout <file>` (已具備 `git_checkout`，支援單檔復原與分支切換)
   - **Branch 分支應用**
     - [x] `git branch` (支援 list / checkout / create，已具備 `git_branch`)
-    - [ ] `git branch -d` / `git branch -D` (刪除/強制刪除分支)
+    - [x] `git checkout` (已具備 `git_checkout`，支援切換與建立分支)
+    - [ ] `git branch -d` / `git branch -D` ⚠️ [高危指令 - 涉及未合併分支丟失風險，暫不開放]
     - [ ] `git branch -m` (分支更名)
   - **Reset 版本回退**
-    - [ ] `git reset [--soft|--mixed|--hard] <commit>` (重設至特定版本/HEAD~N)
+    - [ ] `git reset [--soft|--mixed|--hard] <commit>` ⚠️ [高危指令 - 容易遺失工作區或歷史 Commit，暫不開放]
   - **Rebase & Merge 合併操作**
-    - [ ] `git rebase <branch>` (變基分支)
-    - [ ] `git merge <branch>` (合併分支)
+    - [ ] `git rebase <branch>` ⚠️ [高危指令 - 修改線性歷史且易產生複雜衝突，暫不開放]
+    - [ ] `git merge <branch>` ⚠️ [高危指令 - 自動合併衝突易中斷 Pipeline，暫不開放]
   - **查詢與歷史紀錄 (Log / Blame / Reflog)**
     - [x] `git diff` (已具備 `git_diff`)
     - [x] `git log` (已具備 `git_log`，支援 `--max_count`, `--oneline`, `--file_path`)

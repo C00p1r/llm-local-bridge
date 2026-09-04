@@ -202,7 +202,19 @@
       "parameters": {"action": "list"}
     }
 
-15. git_clean: 清理工作區未追蹤的檔案。
+15. git_checkout: 切換分支、建立新分支或復原單一檔案修改。
+    參數:
+    - branch_name (string, 選填): 要切換或建立的分支名稱。
+    - create_branch (bool, 選填): 是否建立並切換新分支 (相當於 git checkout -b，預設 false)。
+    - file_path (string, 選填): 指定復原修改的檔案相對路徑 (相當於 git checkout -- <file>)。
+    - subfolder (string, 選填): 操作子目錄。
+    範例:
+    {
+      "tool": "git_checkout",
+      "parameters": {"branch_name": "main"}
+    }
+
+16. git_clean: 清理工作區未追蹤的檔案。
     參數:
     - subfolder (string, 選填): 操作子目錄。
     - dry_run (bool, 選填): 是否僅預演列出要刪除的檔案而不實際刪除 (預設 false)。
@@ -212,7 +224,7 @@
       "parameters": {"dry_run": true}
     }
 
-16. list_dir: 結構化掃描目錄樹，自動忽略 .git, __pycache__, node_modules, .venv 等噪音目錄，大幅節省 Token。
+17. list_dir: 結構化掃描目錄樹，自動忽略 .git, __pycache__, node_modules, .venv 等噪音目錄，大幅節省 Token。
     參數:
     - path (string, 選填): 工作區相對目錄路徑 (留空代表根目錄)。
     - max_depth (int, 選填): 掃描深度 (預設 3)。
@@ -222,7 +234,7 @@
       "parameters": {"path": "", "max_depth": 2}
     }
 
-17. get_outline: 基於 AST 解析 Python 檔案符號大綱（Class / Function / Method）及其所在行號，快速定位 target。
+18. get_outline: 基於 AST 解析 Python 檔案符號大綱（Class / Function / Method）及其所在行號，快速定位 target。
     參數:
     - path (string, 必填): Python 檔案相對路徑。
     範例:
@@ -231,7 +243,7 @@
       "parameters": {"path": "server.py"}
     }
 
-18. search_codebase: 全專案全文關鍵字或正則檢索（全域雷達），快速定位變數、API 路徑與配置項。
+19. search_codebase: 全專案全文關鍵字或正則檢索（全域雷達），快速定位變數、API 路徑與配置項。
     參數:
     - query (string, 必填): 搜尋關鍵字或正則表達式。
     - path (string, 選填): 限定子目錄（預設根目錄）。
@@ -243,7 +255,7 @@
       "parameters": {"query": "run_transient_script", "include_pattern": "*.py"}
     }
 
-19. find_references: 尋找 Symbol（類別/函式/變數）的定義處與所有呼叫點，修改前進行衝擊分析。
+20. find_references: 尋找 Symbol（類別/函式/變數）的定義處與所有呼叫點，修改前進行衝擊分析。
     參數:
     - symbol (string, 必填): 標識符名稱。
     - file_type (string, 選填): 語言副檔名（如 py, java, ts）。
@@ -254,7 +266,7 @@
       "parameters": {"symbol": "run_transient_script"}
     }
 
-20. list_tool: 主動查詢目前環境所支援的所有可用工具名稱清單。
+21. list_tool: 主動查詢目前環境所支援的所有可用工具名稱清單。
     參數: 無
     範例:
     {
@@ -269,7 +281,7 @@
 - 操作環境時，僅輸出 \`\`\`tool_call 區塊，等待系統回傳 [TOOL_RESULT] 後再接續分析。
 
 ### 批次呼叫 (Batch Array) 格式
-```tool_call
+\`\`\`tool_call
 [
   {
     "tool": "file_replace",
@@ -280,7 +292,7 @@
     "parameters": {"command": "python -m pytest", "timeout": 20}
   }
 ]
-```
+\`\`\`
 `;
 
     let sessionToken = GM_getValue('session_token', '');

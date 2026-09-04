@@ -85,6 +85,7 @@ SUPPORTED_TOOLS = [
     "git_log",
     "git_blame",
     "git_branch",
+    "git_checkout",
     "git_clean",
     "list_dir",
     "get_outline",
@@ -162,6 +163,9 @@ async def _execute_single_tool(tool_name: str, params: Dict[str, Any]) -> dict:
 
     elif tool_name == "git_branch":
         return await github_client.handle_github_action("branch", params)
+
+    elif tool_name == "git_checkout":
+        return await github_client.handle_github_action("checkout", params)
 
     elif tool_name == "git_clean":
         return await github_client.handle_github_action("clean", params)

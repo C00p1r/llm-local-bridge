@@ -18,6 +18,7 @@ AVAILABLE_ACTIONS = {
     "log": "Get commit history log (params: subfolder, max_count, oneline, file_path)",
     "blame": "Show what revision and author last modified each line of a file (params: file_path, start_line, end_line, subfolder)",
     "branch": "List, create, or switch branches (params: action, branch_name, subfolder)",
+    "checkout": "Switch branches or restore working tree files (params: branch_name, create_branch, file_path, subfolder)",
     "clean": "Remove untracked files from working tree (params: subfolder, dry_run)",
     "list_actions": "List all available github actions and their descriptions"
 }
@@ -178,6 +179,32 @@ def git_branch(action: str = "list", branch_name: str = "", subfolder: str = "")
     except Exception as e:
         return {"status": "error", "output": str(e), "exit_code": -1}
 
+def git_checkout(branch_name: str = "", create_branch: bool = False, file_path: str = "", subfolder: str = "") -> Dict[str, Any]:
+    try:
+        git_bin = get_git_executable()
+        target_path = _resolve_target_path(subfolder)
+        if not (target_path / ".git").exists():
+            return {"status": "error", "output": f"目錄 {target_path} 不是有效的 Git 倉庫", "exit_code": -1}
+        
+        if file_path:
+            cmd = [git_bin, "checkout", "--", file_path]
+        elif branch_name:
+            if create_branch:
+                cmd = [git_bin, "checkout", "-b", branch_name]
+            else:
+                cmd = [git_bin, "checkout", branch_name]
+        else:
+            return {"status": "error", "output": "git_checkout 必須指定 branch_name 或 file_path", "exit_code": -1}
+            
+        res = subprocess.run(cmd, cwd=str(target_path), capture_output=True, text=True, timeout=20)
+        if res.returncode == 0:
+            output = res.stdout.strip() or res.stderr.strip() or "成功執行 checkout"
+            return {"status": "success", "output": output, "exit_code": 0}
+        else:
+            return {"status": "failed", "output": res.stderr, "exit_code": res.returncode}
+    except Exception as e:
+        return {"status": "error", "output": str(e), "exit_code": -1}
+
 def git_clean(subfolder: str = "", dry_run: bool = False) -> Dict[str, Any]:
     try:
         git_bin = get_git_executable()
@@ -332,6 +359,13 @@ async def handle_github_action(action: str, params: Dict[str, Any]) -> Dict[str,
         return git_branch(
             action=params.get("action", "list"),
             branch_name=params.get("branch_name", ""),
+            subfolder=params.get("subfolder", "")
+        )
+    elif action == "checkout":
+        return git_checkout(
+            branch_name=params.get("branch_name", ""),
+            create_branch=params.get("create_branch", False),
+            file_path=params.get("file_path", ""),
             subfolder=params.get("subfolder", "")
         )
     elif action == "clean":

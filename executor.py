@@ -303,16 +303,24 @@ def read_workspace_file(path: str, start_line: Optional[int] = None, end_line: O
 def get_workspace_git_diff(path: str = "") -> dict:
     """
     檢視工作區相對於 Git 的 diff，避免盲改或遺漏除錯程式碼。
+    支援針對單一檔案或整個目錄/專案比對。
     """
     try:
-        target_dir = (Path(WORKSPACE_DIR) / path).resolve() if path else Path(WORKSPACE_DIR).resolve()
+        target_path = (Path(WORKSPACE_DIR) / path).resolve() if path else Path(WORKSPACE_DIR).resolve()
         workspace_path = Path(WORKSPACE_DIR).resolve()
-        if not str(target_dir).startswith(str(workspace_path)):
+        if not str(target_path).startswith(str(workspace_path)):
             return {"status": "error", "output": "[Bridge] Path out of workspace", "exit_code": -1}
 
+        if target_path.is_file():
+            cwd_dir = target_path.parent
+            cmd = ["git", "diff", "HEAD", "--", target_path.name]
+        else:
+            cwd_dir = target_path
+            cmd = ["git", "diff", "HEAD"]
+
         res = subprocess.run(
-            ["git", "diff", "HEAD"],
-            cwd=str(target_dir),
+            cmd,
+            cwd=str(cwd_dir),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
