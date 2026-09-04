@@ -65,7 +65,26 @@
      "parameters": {"path": "example.py", "content": "print('hello')"}
    }
 
-3. run_script: 在沙盒內執行暫存腳本 (自動建立隔離檔並保證清理)。
+3. patch_and_test: 原子化操作：精確替換內容 -> 語法驗證 -> 即時執行測試指令（極致縮減對話輪次並保證驗證閉環）。
+   參數:
+   - path (string, 必填): 工作區相對路徑。
+   - target (string, 必填): 原檔案中待替換的確切原始字串。
+   - replacement (string, 必填): 欲替換成的新字串內容。
+   - test_command (string, 必填): 替換成功後立即執行的測試 Shell 指令。
+   - timeout (int, 選填): 測試指令逾時秒數 (預設 30)。
+   - auto_rollback (bool, 選填): 若測試失敗是否自動還原檔案 (預設 false)。
+   範例:
+   {
+     "tool": "patch_and_test",
+     "parameters": {
+       "path": "server.py",
+       "target": "DEBUG = False",
+       "replacement": "DEBUG = True",
+       "test_command": "python -m pytest"
+     }
+   }
+
+4. run_script: 在沙盒內執行暫存腳本 (自動建立隔離檔並保證清理)。
    參數:
    - code (string, 必填): 完整腳本程式碼。
    - language (string, 選填): 直譯器類型，支援 "python"、"bash"、"sh"、"node" (預設 "python")。
@@ -486,6 +505,15 @@
                 const logName = Array.isArray(parsed) ? `Batch (${parsed.length} items)` : parsed.tool;
                 console.log('%c[Bridge] ✓ 成功解析 Tool Call', 'color:#38bdf8;font-weight:bold;', logName, parsed);
                 return { parsed, element: el };
+            } else {
+                // 偵測到意圖呼叫 tool 但 JSON 語法損壞，觸發即時語法反饋
+                el.dataset.bridgeExecuted = 'true';
+                console.warn('[Bridge] ⚠️ 偵測到損壞的 Tool Call JSON 語法');
+                return {
+                    syntaxError: true,
+                    element: el,
+                    rawSnippet: text.length > 300 ? text.substring(0, 300) + '...' : text
+                };
             }
         }
         return null;
@@ -500,6 +528,23 @@
         if (!target) return;
 
         isExecuting = true;
+
+        if (target.syntaxError) {
+            recordMetric(false);
+            const errorFeedback = {
+                status: 'error',
+                error_type: 'JSON_SYNTAX_ERROR',
+                output: '[Bridge 格式解析失敗] 您輸出的 tool_call 無法解析為標準 JSON。\n請檢查括號對稱性（例如勿輸出 [{]} 或 [{]]）、引號閉合與跳脫字元。\n\n標準範例:\n```tool_call\n[\n  {\n    "tool": "read_file",\n    "parameters": {"path": "example.py"}\n  }\n]\n```',
+                raw_received: target.rawSnippet,
+                exit_code: -1
+            };
+            const errReply = `[TOOL_RESULT]\n\`\`\`json\n${JSON.stringify(errorFeedback, null, 2)}\n\`\`\``;
+            await submitToLLM(errReply);
+            lastExecutionTime = Date.now();
+            isExecuting = false;
+            return;
+        }
+
         const logName = Array.isArray(target.parsed) ? `Batch (${target.parsed.length} steps)` : target.parsed.tool;
         console.log('%c[Bridge] ▶ 開始執行 Tool', 'color:#f59e0b;font-weight:bold;', logName);
 

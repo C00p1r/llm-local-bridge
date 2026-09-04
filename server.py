@@ -70,9 +70,32 @@ async def get_context(token: str = Depends(verify_token)):
         "context_prompt": prompt_text
     }
 
+SUPPORTED_TOOLS = [
+    "execute_command",
+    "run_script",
+    "write_file",
+    "replace_content",
+    "patch_and_test",
+    "read_file",
+    "git_diff",
+    "list_dir",
+    "get_outline",
+    "search_codebase",
+    "find_references",
+    "github_action",
+    "capture_memory"
+]
+
 async def _execute_single_tool(tool_name: str, params: Dict[str, Any]) -> dict:
     if tool_name == "execute_command":
-        cmd = params.get("command", "")
+        cmd = params.get("command", "").strip()
+        # 攔截 Git 指令並給予精確提示
+        if cmd.startswith("git ") or cmd == "git":
+            return {
+                "status": "error",
+                "output": "[Bridge 格式防護] 禁止透過 execute_command 執行 git 指令。請改用專屬的 github_action 工具以確保授權與工作區安全性。",
+                "exit_code": -1
+            }
         timeout = params.get("timeout", 30)
         return await executor.run_shell_command(cmd, timeout=timeout)
 
@@ -96,6 +119,17 @@ async def _execute_single_tool(tool_name: str, params: Dict[str, Any]) -> dict:
         target = params.get("target", "")
         replacement = params.get("replacement", "")
         res = executor.replace_file_content(path, target, replacement)
+        memory_manager.capture_snapshot()
+        return res
+
+    elif tool_name == "patch_and_test":
+        path = params.get("path", "")
+        target = params.get("target", "")
+        replacement = params.get("replacement", "")
+        test_cmd = params.get("test_command", "")
+        timeout = params.get("timeout", 30)
+        auto_rollback = params.get("auto_rollback", False)
+        res = await executor.patch_and_test_file(path, target, replacement, test_cmd, timeout=timeout, auto_rollback=auto_rollback)
         memory_manager.capture_snapshot()
         return res
 
@@ -145,7 +179,15 @@ async def _execute_single_tool(tool_name: str, params: Dict[str, Any]) -> dict:
         return {"status": "success", "output": "專案架構快照已更新", "snapshot": snapshot}
 
     else:
-        return {"status": "error", "output": f"[Bridge] 未知的工具名稱: {tool_name}", "exit_code": -1}
+        import difflib
+        matches = difflib.get_close_matches(tool_name, SUPPORTED_TOOLS, n=3, cutoff=0.4)
+        suggestion = f"。您是否是指: {', '.join(matches)}？" if matches else ""
+        available_list = ", ".join(SUPPORTED_TOOLS)
+        return {
+            "status": "error",
+            "output": f"[Bridge] 未知的工具名稱: '{tool_name}'{suggestion}\n可用工具清單: [{available_list}]",
+            "exit_code": -1
+        }
 
 @app.post("/execute")
 async def execute_tool(req: Union[ExecuteRequest, List[ExecuteRequest]], token: str = Depends(verify_token)):

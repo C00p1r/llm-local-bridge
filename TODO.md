@@ -9,7 +9,13 @@
 ---
 
 ## 需求清單與進度
-以下是我目前觀察到的問題，以及一些我認為的解法，參考就好，提出你的意見。
-- llm容易拼錯batch array的指令格式: 如果改成去掉中括號[]，改成只使用逗號將json隔開是否能在不影響偵測的情況下降低拼錯機率。
-- llm對工具掌握度低，容易出現叫錯名字，習慣用execute_command呼叫git指令等問題: 我想到幾種方案，一種是統一工具名稱像是write_file和replace_content統一改成file_write, file_replace之類的更具規範的命名。第二種是扁平化，避免像是github_action，而是直接變成github_pull, github_clone等等。第三種是工具列表指令，除了能被主動調用，在發生llm調用不存在工具時也能把實際工具列在裡面。第四種是我比較不確定的，是模糊匹配，透過相似度匹配與llm輸入名稱最接近的工具，但是會有穩定性的問題。
-- llm對於batch array的不熟練應用，導致對話輪次容易過長: 我除了用prompt提醒以外暫時沒想到其他方式。
+
+### [Phase 4: 錯誤反饋反射機制與工具鏈正規化 (In Progress)]
+- [x] **1. JSON 格式損壞快速反饋 (Syntax Error Reflection)**
+  - **實作**：Tampermonkey 偵測到含 `"tool"` 但無法解析之字串時，不強行猜測，直接回報 `JSON_SYNTAX_ERROR` 並附帶標準格式範例引導自我修正。
+- [x] **2. 未知工具呼叫反射 (Tool Not Found Reflection)**
+  - **實作**：`server.py` 在遇到未知工具名稱時，透過 `difflib` 列出最接近的建議工具名稱，並附帶完整的 `SUPPORTED_TOOLS` 清單。
+- [x] **3. `execute_command` 禁止 Git 指令攔截與導引**
+  - **實作**：`server.py` 攔截 `execute_command` 中的 `git ` 指令，提示改用專屬 `github_action` 工具。
+- [x] **4. 複合工具 `patch_and_test` 實作**
+  - **實作**：在 `executor.py` 與 `server.py` 完成原子化 `patch_and_test` 封裝，並同步更新 `tampermonkey_script.js` 系統提示詞。
