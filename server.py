@@ -73,12 +73,10 @@ async def get_context(token: str = Depends(verify_token)):
 SUPPORTED_TOOLS = [
     "execute_command",
     "run_script",
-    # 檔案操作統一命名
     "file_read",
     "file_write",
     "file_replace",
     "patch_and_test",
-    # Git 操作扁平化
     "git_clone",
     "git_pull",
     "git_push",
@@ -87,12 +85,7 @@ SUPPORTED_TOOLS = [
     "get_outline",
     "search_codebase",
     "find_references",
-    "capture_memory",
-    # 向下相容舊名稱
-    "read_file",
-    "write_file",
-    "replace_content",
-    "github_action"
+    "capture_memory"
 ]
 
 async def _execute_single_tool(tool_name: str, params: Dict[str, Any]) -> dict:
@@ -102,7 +95,7 @@ async def _execute_single_tool(tool_name: str, params: Dict[str, Any]) -> dict:
         if cmd.startswith("git ") or cmd == "git":
             return {
                 "status": "error",
-                "output": "[Bridge 格式防護] 禁止透過 execute_command 執行 git 指令。請改用專屬的 github_action 工具以確保授權與工作區安全性。",
+                "output": "[Bridge 格式防護] 禁止透過 execute_command 執行 git 指令。請改用專屬的 git_pull / git_push / git_clone / git_diff 工具以確保授權與工作區安全性。",
                 "exit_code": -1
             }
         timeout = params.get("timeout", 30)
@@ -116,14 +109,14 @@ async def _execute_single_tool(tool_name: str, params: Dict[str, Any]) -> dict:
         memory_manager.capture_snapshot()
         return res
 
-    elif tool_name in ["file_write", "write_file"]:
+    elif tool_name == "file_write":
         path = params.get("path", "")
         content = params.get("content", "")
         res = executor.write_workspace_file(path, content)
         memory_manager.capture_snapshot()
         return res
 
-    elif tool_name in ["file_replace", "replace_content"]:
+    elif tool_name == "file_replace":
         path = params.get("path", "")
         target = params.get("target", "")
         replacement = params.get("replacement", "")
@@ -142,7 +135,7 @@ async def _execute_single_tool(tool_name: str, params: Dict[str, Any]) -> dict:
         memory_manager.capture_snapshot()
         return res
 
-    elif tool_name in ["file_read", "read_file"]:
+    elif tool_name == "file_read":
         path = params.get("path", "")
         start_line = params.get("start_line")
         end_line = params.get("end_line")
@@ -182,15 +175,6 @@ async def _execute_single_tool(tool_name: str, params: Dict[str, Any]) -> dict:
 
     elif tool_name == "git_push":
         return await github_client.handle_github_action("push", params)
-
-    elif tool_name == "github_action":
-        action = params.get("action", "")
-        raw_sub = params.get("params")
-        if isinstance(raw_sub, dict):
-            sub_params = raw_sub
-        else:
-            sub_params = {k: v for k, v in params.items() if k != "action"}
-        return await github_client.handle_github_action(action, sub_params)
 
     elif tool_name == "capture_memory":
         snapshot = memory_manager.capture_snapshot()

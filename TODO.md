@@ -21,5 +21,5 @@
   - **實作**：在 `executor.py` 與 `server.py` 完成原子化 `patch_and_test` 封裝，並同步更新 `tampermonkey_script.js` 系統提示詞。
 - [x] **5. Git 操作扁平化 (`git_clone` / `git_pull` / `git_push`)**
   - **實作**：將原本巢狀的 `github_action` 拆解為一級工具，並保留 `github_action` 向下相容。
-- [x] **6. 檔案操作規範化命名 (`file_read` / `file_replace` / `file_write`)**
-  - **實作**：在 `server.py` 註冊新命名規範，Tampermonkey Prompt 同步更新，並對舊名雙向相容相容。
+- [x] **6. 檔案操作規範化命名與移除舊版相容 (`file_read` / `file_replace` / `file_write`)**
+  - **實作**：在 `server.py` 與 `tampermonkey_script.js` 全面移除舊別名（`read_file`, `write_file`, `replace_content`, `github_action`），統一 15 個標準工具規範化命名。

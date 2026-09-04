@@ -40,10 +40,10 @@
 
 ### 環境工具規格與參數定義 (Tool Schemas)
 
-1. file_replace: 精確局部替換檔案內容（修改現有檔案時一律優先使用，杜絕覆寫遺漏與 Token 浪費；相容 replace_content）。
+1. file_replace: 精確局部替換檔案內容（修改現有檔案時一律優先使用，杜絕覆寫遺漏與 Token 浪費）。
    參數:
    - path (string, 必填): 工作區相對路徑。
-   - target (string, 必填): 原檔案中待替換的確切原始字串（必須在檔案中具備唯一性，若非唯一後端將報錯拒絕）。
+   - target (string, 必填): 原檔案中待替換的確切原始字串（必須在檔案中具備唯一性，若非 Leaked/重複字串，若非唯一後端將報錯拒絕）。
    - replacement (string, 必填): 欲替換成的新字串內容。
    範例:
    {
@@ -55,7 +55,7 @@
      }
    }
 
-2. file_write: 建立新檔案或在必須全量重構時覆寫檔案（相容 write_file）。
+2. file_write: 建立新檔案或在必須全量重構時覆寫檔案。
    參數:
    - path (string, 必填): 工作區相對路徑。
    - content (string, 必填): 檔案文字內容。
@@ -65,7 +65,7 @@
      "parameters": {"path": "example.py", "content": "print('hello')"}
    }
 
-3. file_read: 結構化讀取檔案內容，支援指定行號區間並附帶行號，杜絕換行轉義與盲猜 target（相容 read_file）。
+3. file_read: 結構化讀取檔案內容，支援指定行號區間並附帶行號，杜絕換行轉義與盲猜 target。
    參數:
    - path (string, 必填): 工作區相對路徑。
    - start_line (int, 選填): 起始行號 (從 1 開始)。
@@ -430,11 +430,11 @@
             if (action === 'execute_command') {
                 return { tool: 'execute_command', parameters: { command: rawBody } };
             }
-            if (action === 'write_file') {
+            if (action === 'file_write' || action === 'write_file') {
                 const firstNewline = rawBody.indexOf('\n');
                 const path = rawBody.substring(0, firstNewline).replace(/^path:\s*/i, '').trim();
                 const content = rawBody.substring(firstNewline + 1);
-                return { tool: 'write_file', parameters: { path, content } };
+                return { tool: 'file_write', parameters: { path, content } };
             }
             if (action === 'run_script') {
                 return { tool: 'run_script', parameters: { code: rawBody, language: 'python' } };
