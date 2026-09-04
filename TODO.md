@@ -16,6 +16,10 @@
 - [x] **2. 未知工具呼叫反射 (Tool Not Found Reflection)**
   - **實作**：`server.py` 在遇到未知工具名稱時，透過 `difflib` 列出最接近的建議工具名稱，並附帶完整的 `SUPPORTED_TOOLS` 清單。
 - [x] **3. `execute_command` 禁止 Git 指令攔截與導引**
-  - **實作**：`server.py` 攔截 `execute_command` 中的 `git ` 指令，提示改用專屬 `github_action` 工具。
+  - **實作**：`server.py` 攔截 `execute_command` 中的 `git ` 指令，提示改用專屬 Git 工具。
 - [x] **4. 複合工具 `patch_and_test` 實作**
   - **實作**：在 `executor.py` 與 `server.py` 完成原子化 `patch_and_test` 封裝，並同步更新 `tampermonkey_script.js` 系統提示詞。
+- [x] **5. Git 操作扁平化 (`git_clone` / `git_pull` / `git_push`)**
+  - **實作**：將原本巢狀的 `github_action` 拆解為一級工具，並保留 `github_action` 向下相容。
+- [x] **6. 檔案操作規範化命名 (`file_read` / `file_replace` / `file_write`)**
+  - **實作**：在 `server.py` 註冊新命名規範，Tampermonkey Prompt 同步更新，並對舊名雙向相容相容。

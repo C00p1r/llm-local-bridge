@@ -40,14 +40,14 @@
 
 ### 環境工具規格與參數定義 (Tool Schemas)
 
-1. replace_content: 精確局部替換檔案內容（修改現有檔案時一律優先使用，杜絕覆寫遺漏與 Token 浪費）。
+1. file_replace: 精確局部替換檔案內容（修改現有檔案時一律優先使用，杜絕覆寫遺漏與 Token 浪費；相容 replace_content）。
    參數:
    - path (string, 必填): 工作區相對路徑。
    - target (string, 必填): 原檔案中待替換的確切原始字串（必須在檔案中具備唯一性，若非唯一後端將報錯拒絕）。
    - replacement (string, 必填): 欲替換成的新字串內容。
    範例:
    {
-     "tool": "replace_content",
+     "tool": "file_replace",
      "parameters": {
        "path": "server.py",
        "target": "def old_func():\n    pass",
@@ -55,17 +55,28 @@
      }
    }
 
-2. write_file: 建立新檔案或在必須全量重構時覆寫檔案。
+2. file_write: 建立新檔案或在必須全量重構時覆寫檔案（相容 write_file）。
    參數:
    - path (string, 必填): 工作區相對路徑。
    - content (string, 必填): 檔案文字內容。
    範例:
    {
-     "tool": "write_file",
+     "tool": "file_write",
      "parameters": {"path": "example.py", "content": "print('hello')"}
    }
 
-3. patch_and_test: 原子化操作：精確替換內容 -> 語法驗證 -> 即時執行測試指令（極致縮減對話輪次並保證驗證閉環）。
+3. file_read: 結構化讀取檔案內容，支援指定行號區間並附帶行號，杜絕換行轉義與盲猜 target（相容 read_file）。
+   參數:
+   - path (string, 必填): 工作區相對路徑。
+   - start_line (int, 選填): 起始行號 (從 1 開始)。
+   - end_line (int, 選填): 結束行號。
+   範例:
+   {
+     "tool": "file_read",
+     "parameters": {"path": "server.py", "start_line": 1, "end_line": 30}
+   }
+
+4. patch_and_test: 原子化操作：精確替換內容 -> 語法驗證 -> 即時執行測試指令（極致縮減對話輪次並保證驗證閉環）。
    參數:
    - path (string, 必填): 工作區相對路徑。
    - target (string, 必填): 原檔案中待替換的確切原始字串。
@@ -84,7 +95,40 @@
      }
    }
 
-4. run_script: 在沙盒內執行暫存腳本 (自動建立隔離檔並保證清理)。
+5. git_clone: Clone 遠端儲存庫至本機工作區。
+   參數:
+   - repo_url (string, 必填): Git clone 網址。
+   - target_subfolder (string, 選填): clone 目的目錄名稱。
+   範例:
+   {
+     "tool": "git_clone",
+     "parameters": {"repo_url": "https://github.com/owner/repo.git", "target_subfolder": "my-repo"}
+   }
+
+6. git_pull: 自遠端分支拉取更新。
+   參數:
+   - branch (string, 選填): 分支名稱 (預設 "main")。
+   - subfolder (string, 選填): 操作子目錄 (根目錄留空 "")。
+   - force_reset (bool, 選填): 是否強制覆蓋本機異動 (預設 false)。
+   範例:
+   {
+     "tool": "git_pull",
+     "parameters": {"branch": "main", "subfolder": "", "force_reset": false}
+   }
+
+7. git_push: 推送工作區異動至 GitHub 儲存庫。
+   參數:
+   - repo (string, 必填): "owner/repo"。
+   - branch (string, 選填): 分支名稱 (預設 "main")。
+   - message (string, 選填): Commit 訊息 (預設 "Update from LLM Local Bridge")。
+   - subfolder (string, 選填): 操作子目錄 (根目錄留空 "")。
+   範例:
+   {
+     "tool": "git_push",
+     "parameters": {"repo": "C00p1r/llm-local-bridge", "branch": "main", "message": "update", "subfolder": ""}
+   }
+
+8. run_script: 在沙盒內執行暫存腳本 (自動建立隔離檔並保證清理)。
    參數:
    - code (string, 必填): 完整腳本程式碼。
    - language (string, 選填): 直譯器類型，支援 "python"、"bash"、"sh"、"node" (預設 "python")。
@@ -95,7 +139,7 @@
      "parameters": {"code": "import sys\nprint(sys.version)", "language": "python"}
    }
 
-4. execute_command: 執行短指令或檢查指令。
+9. execute_command: 執行短指令或檢查指令（嚴禁直接執行 git 指令，請使用專屬 git 工具）。
    參數:
    - command (string, 必填): 要執行的 Shell 指令。
    - timeout (int, 選填): 逾時秒數 (預設 20)。
@@ -105,67 +149,35 @@
      "parameters": {"command": "ls -la", "timeout": 20}
    }
 
-5. github_action: 執行 GitHub / Git 操作。
-   參數:
-   - action (string, 必填): 支援 "push" | "push_workspace" | "pull" | "fetch" | "clone" | "list_actions"。
-   - branch (string, 選填): 分支名稱 (預設 "main")。
-   - repo (string, 選填): "owner/repo" (push 操作必填)。
-   - repo_url (string, 選填): Git clone 網址 (clone 操作必填)。
-   - message (string, 選填): Commit 訊息 (push 操作建議提供)。
-   - subfolder (string, 選填): 推送或操作的子目錄 (若操作根目錄則留空字串 "")。
-   - target_subfolder (string, 選填): clone 目的目錄名稱。
-   - force_reset (bool, 選填): 是否強制重設 (pull 操作可選)。
-   範例 (push):
-   {
-     "tool": "github_action",
-     "parameters": {"action": "push", "repo": "owner/repo", "branch": "main", "message": "update", "subfolder": ""}
-   }
-   範例 (pull):
-   {
-     "tool": "github_action",
-     "parameters": {"action": "pull", "branch": "main", "subfolder": "", "force_reset": false}
-   }
+10. git_diff: 檢視工作區相對於 Git HEAD 的 unified diff，確保推送到 GitHub 前修改乾淨且精確。
+    參數:
+    - path (string, 選填): 工作區子目錄或相對路徑 (預設工作區根目錄)。
+    範例:
+    {
+      "tool": "git_diff",
+      "parameters": {}
+    }
 
-6. read_file: 結構化讀取檔案內容，支援指定行號區間並附帶行號，杜絕換行轉義與盲猜 target。
-   參數:
-   - path (string, 必填): 工作區相對路徑。
-   - start_line (int, 選填): 起始行號 (從 1 開始)。
-   - end_line (int, 選填): 結束行號。
-   範例:
-   {
-     "tool": "read_file",
-     "parameters": {"path": "server.py", "start_line": 1, "end_line": 30}
-   }
+11. list_dir: 結構化掃描目錄樹，自動忽略 .git, __pycache__, node_modules, .venv 等噪音目錄，大幅節省 Token。
+    參數:
+    - path (string, 選填): 工作區相對目錄路徑 (留空代表根目錄)。
+    - max_depth (int, 選填): 掃描深度 (預設 3)。
+    範例:
+    {
+      "tool": "list_dir",
+      "parameters": {"path": "", "max_depth": 2}
+    }
 
-7. git_diff: 檢視工作區相對於 Git HEAD 的 unified diff，確保推送到 GitHub 前修改乾淨且精確。
-   參數:
-   - path (string, 選填): 工作區子目錄或相對路徑 (預設工作區根目錄)。
-   範例:
-   {
-     "tool": "git_diff",
-     "parameters": {}
-   }
+12. get_outline: 基於 AST 解析 Python 檔案符號大綱（Class / Function / Method）及其所在行號，快速定位 target。
+    參數:
+    - path (string, 必填): Python 檔案相對路徑。
+    範例:
+    {
+      "tool": "get_outline",
+      "parameters": {"path": "server.py"}
+    }
 
-8. list_dir: 結構化掃描目錄樹，自動忽略 .git, __pycache__, node_modules, .venv 等噪音目錄，大幅節省 Token。
-   參數:
-   - path (string, 選填): 工作區相對目錄路徑 (留空代表根目錄)。
-   - max_depth (int, 選填): 掃描深度 (預設 3)。
-   範例:
-   {
-     "tool": "list_dir",
-     "parameters": {"path": "", "max_depth": 2}
-   }
-
-9. get_outline: 基於 AST 解析 Python 檔案符號大綱（Class / Function / Method）及其所在行號，快速定位 target。
-   參數:
-   - path (string, 必填): Python 檔案相對路徑。
-   範例:
-   {
-     "tool": "get_outline",
-     "parameters": {"path": "server.py"}
-   }
-
-10. search_codebase: 全專案全文關鍵字或正則檢索（全域雷達），快速定位變數、API 路徑與配置項。
+13. search_codebase: 全專案全文關鍵字或正則檢索（全域雷達），快速定位變數、API 路徑與配置項。
     參數:
     - query (string, 必填): 搜尋關鍵字或正則表達式。
     - path (string, 選填): 限定子目錄（預設根目錄）。
@@ -177,7 +189,7 @@
       "parameters": {"query": "run_transient_script", "include_pattern": "*.py"}
     }
 
-11. find_references: 尋找 Symbol（類別/函式/變數）的定義處與所有呼叫點，修改前進行衝擊分析。
+14. find_references: 尋找 Symbol（類別/函式/變數）的定義處與所有呼叫點，修改前進行衝擊分析。
     參數:
     - symbol (string, 必填): 標識符名稱。
     - file_type (string, 選填): 語言副檔名（如 py, java, ts）。
@@ -189,8 +201,8 @@
     }
 
 ### 執行與呼叫原則
-- 修改現有檔案時一律優先使用 replace_content，提供精確且唯一的上下文字串。
-- 僅在建立全新檔案時使用 write_file。
+- 修改現有檔案時一律優先使用 file_replace (或 patch_and_test)，提供精確且唯一的上下文字串。
+- 僅在建立全新檔案時使用 file_write。
 - 多步驟操作可使用 JSON Array 批次呼叫 (支援 Fail-Fast 機制)。
 - 操作環境時，僅輸出 \`\`\`tool_call 區塊，等待系統回傳 [TOOL_RESULT] 後再接續分析。
 

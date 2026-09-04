@@ -73,17 +73,26 @@ async def get_context(token: str = Depends(verify_token)):
 SUPPORTED_TOOLS = [
     "execute_command",
     "run_script",
-    "write_file",
-    "replace_content",
+    # 檔案操作統一命名
+    "file_read",
+    "file_write",
+    "file_replace",
     "patch_and_test",
-    "read_file",
+    # Git 操作扁平化
+    "git_clone",
+    "git_pull",
+    "git_push",
     "git_diff",
     "list_dir",
     "get_outline",
     "search_codebase",
     "find_references",
-    "github_action",
-    "capture_memory"
+    "capture_memory",
+    # 向下相容舊名稱
+    "read_file",
+    "write_file",
+    "replace_content",
+    "github_action"
 ]
 
 async def _execute_single_tool(tool_name: str, params: Dict[str, Any]) -> dict:
@@ -107,14 +116,14 @@ async def _execute_single_tool(tool_name: str, params: Dict[str, Any]) -> dict:
         memory_manager.capture_snapshot()
         return res
 
-    elif tool_name == "write_file":
+    elif tool_name in ["file_write", "write_file"]:
         path = params.get("path", "")
         content = params.get("content", "")
         res = executor.write_workspace_file(path, content)
         memory_manager.capture_snapshot()
         return res
 
-    elif tool_name == "replace_content":
+    elif tool_name in ["file_replace", "replace_content"]:
         path = params.get("path", "")
         target = params.get("target", "")
         replacement = params.get("replacement", "")
@@ -133,7 +142,7 @@ async def _execute_single_tool(tool_name: str, params: Dict[str, Any]) -> dict:
         memory_manager.capture_snapshot()
         return res
 
-    elif tool_name == "read_file":
+    elif tool_name in ["file_read", "read_file"]:
         path = params.get("path", "")
         start_line = params.get("start_line")
         end_line = params.get("end_line")
@@ -164,6 +173,15 @@ async def _execute_single_tool(tool_name: str, params: Dict[str, Any]) -> dict:
         file_type = params.get("file_type", "")
         scope_dir = params.get("scope_dir", "")
         return executor.find_references(symbol, file_type=file_type, scope_dir=scope_dir)
+
+    elif tool_name == "git_clone":
+        return await github_client.handle_github_action("clone", params)
+
+    elif tool_name == "git_pull":
+        return await github_client.handle_github_action("pull", params)
+
+    elif tool_name == "git_push":
+        return await github_client.handle_github_action("push", params)
 
     elif tool_name == "github_action":
         action = params.get("action", "")
