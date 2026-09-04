@@ -9,23 +9,7 @@
 ---
 
 ## 需求清單與進度
-
-### [Phase 1: 診斷與精確編輯能力 (Completed)]
-- [x] **`read_file`**：支援行號標註與 `start_line` / `end_line` 範圍擷取，杜絕換行轉義與盲猜。
-- [x] **`git_diff`**：支援檢視工作區相較於 Git HEAD 的 unified diff，推送前確保修改乾淨。
-- [x] **內建語法驗證 (Syntax Validation)**：無縫整合於 `replace_content` 與 `write_file`，寫入 `.py` 前自動執行 `ast.parse`，語法錯誤即時中斷回報。
-- [x] **修復啟動錯誤**：補齊 `executor.py` 頂部 `from typing import Optional`。
-
-### [Phase 2: 沙盒權限與結構化感知 (Completed)]
-- [x] **沙盒 UID/GID 對齊與權限修復 (Permissions & Ownership)**
-  - **實作**：在 `executor.py` 注入 `_get_docker_user_args()`，POSIX/WSL 動態對齊 `--user uid:gid`，避免 root 鎖定檔案。
-- [x] **`list_dir` 結構化目錄樹**
-  - **實作**：過濾 `.git`、`__pycache__`、`node_modules`、`.venv`，以緊湊目錄樹回傳，大幅省下 Token。
-- [x] **`get_outline` 程式碼大綱感知**
-  - **實作**：基於 AST 解析 `.py` 檔案之 class / function 簽名與行號範圍，快速定位 target。
-
-### [Phase 3: 靜態檢索與符號導航 (Completed)]
-- [x] **`search_codebase` 全文關鍵字與正則檢索**
-  - **實作**：優先使用 `rg` (ripgrep) CLI，回退至原生 `Path.rglob()`，自動過濾常見建置與相依性噪音目錄。
-- [x] **`find_references` 符號定義與呼叫點導航**
-  - **實作**：基於單詞邊界匹配與定義語法判斷，分離 `definitions` 與 `usages`，提供跨檔案修改前防爆網。
+以下是我目前觀察到的問題，以及一些我認為的解法，參考就好，提出你的意見。
+- llm容易拼錯batch array的指令格式: 如果改成去掉中括號[]，改成只使用逗號將json隔開是否能在不影響偵測的情況下降低拼錯機率。
+- llm對工具掌握度低，容易出現叫錯名字，習慣用execute_command呼叫git指令等問題: 我想到幾種方案，一種是統一工具名稱像是write_file和replace_content統一改成file_write, file_replace之類的更具規範的命名。第二種是扁平化，避免像是github_action，而是直接變成github_pull, github_clone等等。第三種是工具列表指令，除了能被主動調用，在發生llm調用不存在工具時也能把實際工具列在裡面。第四種是我比較不確定的，是模糊匹配，透過相似度匹配與llm輸入名稱最接近的工具，但是會有穩定性的問題。
+- llm對於batch array的不熟練應用，導致對話輪次容易過長: 我除了用prompt提醒以外暫時沒想到其他方式。
