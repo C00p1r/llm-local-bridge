@@ -9,6 +9,7 @@ import github_client
 import memory_manager
 from config import SESSION_TOKEN, ALLOWED_ORIGINS
 from github_client import git_clone, git_fetch, git_pull
+from tools import TOOL_CATALOG, SUPPORTED_TOOLS
 
 app = FastAPI(title="LLM Local Bridge API")
 
@@ -70,30 +71,7 @@ async def get_context(token: str = Depends(verify_token)):
         "context_prompt": prompt_text
     }
 
-SUPPORTED_TOOLS = [
-    "execute_command",
-    "run_script",
-    "file_read",
-    "file_write",
-    "file_replace",
-    "patch_and_test",
-    "git_clone",
-    "git_pull",
-    "git_push",
-    "git_diff",
-    "git_status",
-    "git_log",
-    "git_blame",
-    "git_branch",
-    "git_checkout",
-    "git_clean",
-    "list_dir",
-    "get_outline",
-    "search_codebase",
-    "find_references",
-    "capture_memory",
-    "list_tool"
-]
+
 
 async def _execute_single_tool(tool_name: str, params: Dict[str, Any]) -> dict:
     if tool_name == "execute_command":
@@ -207,40 +185,8 @@ async def _execute_single_tool(tool_name: str, params: Dict[str, Any]) -> dict:
 
     elif tool_name == "list_tool":
         category = params.get("category", "").strip().lower()
-        tool_catalog = {
-            "core": [
-                {"name": "execute_command", "description": "執行短指令與環境檢查"},
-                {"name": "run_script", "description": "在沙盒內執行暫存腳本"},
-                {"name": "file_read", "description": "結構化讀取檔案"},
-                {"name": "file_write", "description": "建立新檔案或全量重構"},
-                {"name": "file_replace", "description": "精確局部替換檔案內容"},
-                {"name": "patch_and_test", "description": "原子化修改與即時測試"},
-                {"name": "list_tool", "description": "核心管控入口，支援 category 條件查詢"}
-            ],
-            "search": [
-                {"name": "list_dir", "description": "結構化目錄樹掃描"},
-                {"name": "get_outline", "description": "AST 提取 Python 檔案大綱"},
-                {"name": "search_codebase", "description": "全專案全文關鍵字與正則檢索"},
-                {"name": "find_references", "description": "尋找符號定義與調用點"}
-            ],
-            "git": [
-                {"name": "git_clone", "description": "複製遠端儲存庫"},
-                {"name": "git_pull", "description": "拉取遠端更新"},
-                {"name": "git_push", "description": "推送異動至 GitHub"},
-                {"name": "git_diff", "description": "檢視 Git diff"},
-                {"name": "git_status", "description": "查詢工作區狀態"},
-                {"name": "git_log", "description": "檢視 Commit 歷史"},
-                {"name": "git_blame", "description": "追蹤檔案行修訂紀錄"},
-                {"name": "git_branch", "description": "分支管理"},
-                {"name": "git_checkout", "description": "切換分支或單檔復原"},
-                {"name": "git_clean", "description": "清理未追蹤檔案"}
-            ],
-            "system": [
-                {"name": "capture_memory", "description": "捕捉專案架構快照"}
-            ]
-        }
         if category:
-            matched_tools = tool_catalog.get(category, [])
+            matched_tools = TOOL_CATALOG.get(category, [])
             return {
                 "status": "success",
                 "category": category,
@@ -251,7 +197,7 @@ async def _execute_single_tool(tool_name: str, params: Dict[str, Any]) -> dict:
         return {
             "status": "success",
             "total_tools": len(SUPPORTED_TOOLS),
-            "tools": tool_catalog,
+            "tools": TOOL_CATALOG,
             "exit_code": 0
         }
 
