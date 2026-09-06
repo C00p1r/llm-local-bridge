@@ -9,7 +9,7 @@ import github_client
 import memory_manager
 from config import SESSION_TOKEN, ALLOWED_ORIGINS
 from github_client import git_clone, git_fetch, git_pull
-from tools import TOOL_CATALOG, SUPPORTED_TOOLS, TOOL_HANDLERS, register_tool
+from tools import TOOL_CATALOG, SUPPORTED_TOOLS, TOOL_HANDLERS, register_tool, validate_tool_parameters
 
 app = FastAPI(title="LLM Local Bridge API")
 
@@ -217,20 +217,29 @@ import inspect
 
 async def _execute_single_tool(tool_name: str, params: Dict[str, Any]) -> dict:
     handler = TOOL_HANDLERS.get(tool_name)
-    if handler:
-        if inspect.iscoroutinefunction(handler):
-            return await handler(params)
-        return handler(params)
+    if not handler:
+        import difflib
+        matches = difflib.get_close_matches(tool_name, SUPPORTED_TOOLS, n=3, cutoff=0.4)
+        suggestion = f"。您是否是指: {', '.join(matches)}？" if matches else ""
+        available_list = ", ".join(SUPPORTED_TOOLS)
+        return {
+            "status": "error",
+            "output": f"[Bridge] 未知的工具名稱: '{tool_name}'{suggestion}\n可用工具清單: [{available_list}]",
+            "exit_code": -1
+        }
 
-    import difflib
-    matches = difflib.get_close_matches(tool_name, SUPPORTED_TOOLS, n=3, cutoff=0.4)
-    suggestion = f"。您是否是指: {', '.join(matches)}？" if matches else ""
-    available_list = ", ".join(SUPPORTED_TOOLS)
-    return {
-        "status": "error",
-        "output": f"[Bridge] 未知的工具名稱: '{tool_name}'{suggestion}\n可用工具清單: [{available_list}]",
-        "exit_code": -1
-    }
+    # 驗證必要參數
+    is_valid, err_msg = validate_tool_parameters(tool_name, params)
+    if not is_valid:
+        return {
+            "status": "error",
+            "output": err_msg,
+            "exit_code": -1
+        }
+
+    if inspect.iscoroutinefunction(handler):
+        return await handler(params)
+    return handler(params)
 
 @app.post("/execute")
 async def execute_tool(req: Union[ExecuteRequest, List[ExecuteRequest]], token: str = Depends(verify_token)):

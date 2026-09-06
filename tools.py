@@ -25,6 +25,40 @@ SUPPORTED_TOOLS = [
 
 TOOL_HANDLERS = {}
 
+def get_tool_definition(tool_name: str):
+    """根據工具名稱取得 catalog 中的工具定義"""
+    for category_tools in TOOL_CATALOG.values():
+        for tool in category_tools:
+            if tool.get("name") == tool_name:
+                return tool
+    return None
+
+def validate_tool_parameters(tool_name: str, params: dict) -> tuple[bool, str]:
+    """檢查工具呼叫是否缺失必要參數 (required: True)"""
+    tool_def = get_tool_definition(tool_name)
+    if not tool_def:
+        return True, ""
+    
+    expected_params = tool_def.get("parameters", {})
+    missing_keys = []
+    for param_name, param_meta in expected_params.items():
+        if param_meta.get("required", False):
+            val = params.get(param_name)
+            if val is None or (isinstance(val, str) and not val.strip()):
+                missing_keys.append(param_name)
+    
+    if missing_keys:
+        required_details = [
+            f"{k} ({expected_params[k].get('type', 'any')}): {expected_params[k].get('description', '')}"
+            for k in missing_keys
+        ]
+        error_msg = (
+            f"[Bridge Parameter Error] 工具 '{tool_name}' 缺少必要參數: {missing_keys}。\n"
+            f"必要參數規格:\n  - " + "\n  - ".join(required_details)
+        )
+        return False, error_msg
+    return True, ""
+
 def register_tool(name: str):
     """裝飾器：註冊工具處理常式"""
     def decorator(fn):

@@ -65,3 +65,14 @@
     - [x] `git blame <file>` (逐行追蹤作者與修改時間，已具備 `git_blame`)
     - [ ] `git reflog` (查詢操作歷史)
     - [ ] `git config --list` / `git --version` (查詢 Git 設定與版本)
+
+### [Phase 6: 架構重構與長期演進規劃 (Roadmap)]
+- [ ] **1. Docker 沙盒常駐化 (Long-running Container / Exec 模式) [中高風險]**
+  - **背景**：目前每次執行都在臨時容器中 `docker run --rm`，啟動開銷大、跨指令狀態（安裝之套件、快取）無法持久。
+  - **規劃**：改為背景常駐 Container (`docker run -d`)，透過 `docker exec` 派發指令；需設計生命週期管理（自動清理、閒置超時停止、健康檢查與孤兒容器回收機制）。
+- [ ] **2. 記憶體管理與快照異步化 (Async Snapshots / Worker Thread) [中風險]**
+  - **背景**：雖然已實作邊界層延遲聚合快照，但在大規模專案中全量目錄比對與快照寫入仍會佔用主請求線程。
+  - **規劃**：評估將 `capture_snapshot` 移至背景執行緒或非同步任務池，避免 API 請求延遲。
+- [ ] **3. 專案模組化拆分與依賴解耦 [中風險]**
+  - **背景**：`server.py` 與 `executor.py` 承載過多混雜責任（工具註冊、HTTP 服務、路徑檢查、執行期沙盒）。
+  - **規劃**：拆分為 `bridge_core`、`handlers/`、`sandbox/` 等獨立模組，並建立完備的單元測試保護網。
