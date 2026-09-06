@@ -251,7 +251,7 @@ async def execute_tool(req: Union[ExecuteRequest, List[ExecuteRequest]], token: 
             print(f"[Bridge] 收到單一執行請求: {tool_name}")
             res = await _execute_single_tool(tool_name, params)
             if tool_name in ["file_write", "file_replace", "patch_and_test", "run_script"]:
-                memory_manager.capture_snapshot()
+                memory_manager.schedule_background_snapshot()
             return res
 
         # 支援批次陣列請求 (Fail-Fast pipeline)
@@ -278,7 +278,7 @@ async def execute_tool(req: Union[ExecuteRequest, List[ExecuteRequest]], token: 
                 if status not in ["success", "ok"] or exit_code != 0:
                     print(f"[Bridge] 批次步驟 [{idx + 1}] 失敗，中斷後續執行。")
                     if has_file_modifications:
-                        memory_manager.capture_snapshot()
+                        memory_manager.schedule_background_snapshot()
                     return {
                         "status": "failed",
                         "interrupted_at": idx + 1,
@@ -289,7 +289,7 @@ async def execute_tool(req: Union[ExecuteRequest, List[ExecuteRequest]], token: 
                     }
 
             if has_file_modifications:
-                memory_manager.capture_snapshot()
+                memory_manager.schedule_background_snapshot()
 
             return {
                 "status": "success",

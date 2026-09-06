@@ -2,11 +2,14 @@ import os
 import json
 import sys
 import platform
+import asyncio
 from pathlib import Path
 from datetime import datetime
 from config import WORKSPACE_DIR
 
 MEMORY_FILE = WORKSPACE_DIR / ".bridge_memory.json"
+_snapshot_lock = asyncio.Lock()
+_is_snapshot_running = False
 
 IGNORE_DIRS = {
     ".git", "__pycache__", "node_modules", ".venv", "venv", 
@@ -66,6 +69,28 @@ def capture_snapshot(project_name: str = "Workspace") -> dict:
         print(f"[Bridge] 寫入記憶檔案失敗: {e}")
         
     return snapshot
+
+async def async_capture_snapshot(project_name: str = "Workspace") -> dict:
+    """非同步快照：透過執行緒池背景執行，具備防重入鎖保護，避免阻塞主執行緒"""
+    global _is_snapshot_running
+    if _is_snapshot_running:
+        # 若目前已有背景快照在運算，跳過此次重入，直接返回最新快取或空值
+        return {}
+    async with _snapshot_lock:
+        _is_snapshot_running = True
+        try:
+            return await asyncio.to_thread(capture_snapshot, project_name)
+        finally:
+            _is_snapshot_running = False
+
+def schedule_background_snapshot(project_name: str = "Workspace"):
+    """在既有的 asyncio 事件迴圈中觸發背景任務（Fire-and-forget）"""
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(async_capture_snapshot(project_name))
+    except RuntimeError:
+        # 若在同步上下文中調用，退回同步執行
+        capture_snapshot(project_name)
 
 def get_latest_context_prompt() -> str:
     if not MEMORY_FILE.exists():

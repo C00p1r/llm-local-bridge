@@ -70,9 +70,7 @@
 - [ ] **1. Docker 沙盒常駐化 (Long-running Container / Exec 模式) [中高風險]**
   - **背景**：目前每次執行都在臨時容器中 `docker run --rm`，啟動開銷大、跨指令狀態（安裝之套件、快取）無法持久。
   - **規劃**：改為背景常駐 Container (`docker run -d`)，透過 `docker exec` 派發指令；需設計生命週期管理（自動清理、閒置超時停止、健康檢查與孤兒容器回收機制）。
-- [ ] **2. 記憶體管理與快照異步化 (Async Snapshots / Worker Thread) [中風險]**
-  - **背景**：雖然已實作邊界層延遲聚合快照，但在大規模專案中全量目錄比對與快照寫入仍會佔用主請求線程。
-  - **規劃**：評估將 `capture_snapshot` 移至背景執行緒或非同步任務池，避免 API 請求延遲。
-- [ ] **3. 專案模組化拆分與依賴解耦 [中風險]**
-  - **背景**：`server.py` 與 `executor.py` 承載過多混雜責任（工具註冊、HTTP 服務、路徑檢查、執行期沙盒）。
-  - **規劃**：拆分為 `bridge_core`、`handlers/`、`sandbox/` 等獨立模組，並建立完備的單元測試保護網。
+- [x] **2. 記憶體管理與快照異步化 (Async Snapshots / Worker Thread)**
+  - **成果**：在 `memory_manager.py` 實作 `async_capture_snapshot` 與 `schedule_background_snapshot`，透過 `asyncio.to_thread` 背景池處理專案樹遍歷與檔案寫入，並加入防重入鎖（`_snapshot_lock`），`server.py` 調用全面改為非同步觸發，徹底消除 I/O 阻塞延遲。
+- [x] **3. 專案模組化拆分與依賴解耦**
+  - **成果**：將混雜在 `executor.py` 的責任依架構拆分為純檔案系統操作模組 `file_manager.py`、搜尋與 AST 解析模組 `search_ops.py`、Docker 沙盒執行模組 `sandbox.py`，`executor.py` 轉為純粹的協同門面 (Facade)，維持對外介面與 API 完全相容。
