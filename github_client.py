@@ -46,7 +46,7 @@ def git_clone(repo_url: str, target_subfolder: str = "") -> Dict[str, Any]:
             return {"status": "error", "output": f"目標目錄已存在且不為空: {target_path}", "exit_code": -1}
         target_path.mkdir(parents=True, exist_ok=True)
         cmd = [git_bin, "clone", repo_url, str(target_path)]
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        res = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
         if res.returncode == 0:
             return {"status": "success", "output": res.stdout or f"成功 Clone 至 {target_path}", "exit_code": 0}
         else:
@@ -61,7 +61,7 @@ def git_fetch(subfolder: str = "", remote: str = "origin") -> Dict[str, Any]:
         if not (target_path / ".git").exists():
             return {"status": "error", "output": f"目錄 {target_path} 不是有效的 Git 倉庫", "exit_code": -1}
         cmd = [git_bin, "fetch", remote]
-        res = subprocess.run(cmd, cwd=str(target_path), capture_output=True, text=True, timeout=30)
+        res = subprocess.run(cmd, cwd=str(target_path), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
         if res.returncode == 0:
             return {"status": "success", "output": res.stdout or f"成功 Fetch {remote}", "exit_code": 0}
         else:
@@ -78,14 +78,14 @@ def git_pull(subfolder: str = "", remote: str = "origin", branch: str = "main", 
         if force_reset:
             subprocess.run([git_bin, "fetch", remote], cwd=str(target_path), capture_output=True, timeout=30)
             reset_cmd = [git_bin, "reset", "--hard", f"{remote}/{branch}"]
-            res = subprocess.run(reset_cmd, cwd=str(target_path), capture_output=True, text=True, timeout=30)
+            res = subprocess.run(reset_cmd, cwd=str(target_path), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
             if res.returncode == 0:
                 return {"status": "success", "output": f"已強制重設至 {remote}/{branch}", "exit_code": 0}
             else:
                 return {"status": "failed", "output": res.stderr, "exit_code": res.returncode}
         else:
             pull_cmd = [git_bin, "pull", remote, branch]
-            res = subprocess.run(pull_cmd, cwd=str(target_path), capture_output=True, text=True, timeout=30)
+            res = subprocess.run(pull_cmd, cwd=str(target_path), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
             if res.returncode == 0:
                 return {"status": "success", "output": res.stdout or f"成功 Pull {remote}/{branch}", "exit_code": 0}
             else:
@@ -100,7 +100,7 @@ def git_status(subfolder: str = "") -> Dict[str, Any]:
         if not (target_path / ".git").exists():
             return {"status": "error", "output": f"目錄 {target_path} 不是有效的 Git 倉庫", "exit_code": -1}
         cmd = [git_bin, "status", "-s", "-b"]
-        res = subprocess.run(cmd, cwd=str(target_path), capture_output=True, text=True, timeout=15)
+        res = subprocess.run(cmd, cwd=str(target_path), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15)
         if res.returncode == 0:
             output = res.stdout.strip() or "工作區乾淨無修改 (working tree clean)"
             return {"status": "success", "output": output, "exit_code": 0}
@@ -120,7 +120,7 @@ def git_log(subfolder: str = "", max_count: int = 10, oneline: bool = True, file
             cmd.append("--oneline")
         if file_path:
             cmd.extend(["--", file_path])
-        res = subprocess.run(cmd, cwd=str(target_path), capture_output=True, text=True, timeout=20)
+        res = subprocess.run(cmd, cwd=str(target_path), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
         if res.returncode == 0:
             output = res.stdout.strip() or "無任何提交紀錄"
             return {"status": "success", "output": output, "exit_code": 0}
@@ -143,7 +143,7 @@ def git_blame(file_path: str, start_line: Optional[int] = None, end_line: Option
         elif start_line is not None:
             cmd.extend(["-L", f"{start_line},{start_line}"])
         cmd.extend(["--", file_path])
-        res = subprocess.run(cmd, cwd=str(target_path), capture_output=True, text=True, timeout=20)
+        res = subprocess.run(cmd, cwd=str(target_path), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
         if res.returncode == 0:
             return {"status": "success", "output": res.stdout.strip(), "exit_code": 0}
         else:
@@ -170,7 +170,7 @@ def git_branch(action: str = "list", branch_name: str = "", subfolder: str = "")
             cmd = [git_bin, "checkout", "-b", branch_name]
         else:
             return {"status": "error", "output": f"不支援的 branch action: {action}。可用操作: list, checkout, create", "exit_code": -1}
-        res = subprocess.run(cmd, cwd=str(target_path), capture_output=True, text=True, timeout=20)
+        res = subprocess.run(cmd, cwd=str(target_path), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
         if res.returncode == 0:
             output = res.stdout.strip() or res.stderr.strip() or f"成功執行 branch {action}"
             return {"status": "success", "output": output, "exit_code": 0}
@@ -196,7 +196,7 @@ def git_checkout(branch_name: str = "", create_branch: bool = False, file_path: 
         else:
             return {"status": "error", "output": "git_checkout 必須指定 branch_name 或 file_path", "exit_code": -1}
             
-        res = subprocess.run(cmd, cwd=str(target_path), capture_output=True, text=True, timeout=20)
+        res = subprocess.run(cmd, cwd=str(target_path), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
         if res.returncode == 0:
             output = res.stdout.strip() or res.stderr.strip() or "成功執行 checkout"
             return {"status": "success", "output": output, "exit_code": 0}
@@ -213,7 +213,7 @@ def git_clean(subfolder: str = "", dry_run: bool = False) -> Dict[str, Any]:
             return {"status": "error", "output": f"目錄 {target_path} 不是有效的 Git 倉庫", "exit_code": -1}
         flags = "-nd" if dry_run else "-fd"
         cmd = [git_bin, "clean", flags]
-        res = subprocess.run(cmd, cwd=str(target_path), capture_output=True, text=True, timeout=20)
+        res = subprocess.run(cmd, cwd=str(target_path), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=20)
         if res.returncode == 0:
             output = res.stdout.strip() or "無任何未追蹤檔案需要清理"
             return {"status": "success", "output": output, "exit_code": 0}

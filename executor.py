@@ -324,6 +324,8 @@ def get_workspace_git_diff(path: str = "") -> dict:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=10
         )
         stdout_text = (res.stdout or "").strip()

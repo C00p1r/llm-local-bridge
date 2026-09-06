@@ -23,6 +23,15 @@ SUPPORTED_TOOLS = [
     "list_tool"
 ]
 
+TOOL_HANDLERS = {}
+
+def register_tool(name: str):
+    """裝飾器：註冊工具處理常式"""
+    def decorator(fn):
+        TOOL_HANDLERS[name] = fn
+        return fn
+    return decorator
+
 TOOL_CATALOG = {
     "core": [
         {
