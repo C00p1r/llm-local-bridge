@@ -9,7 +9,8 @@ import github_client
 import memory_manager
 from config import SESSION_TOKEN, ALLOWED_ORIGINS
 from github_client import git_clone, git_fetch, git_pull
-from tools import TOOL_CATALOG, SUPPORTED_TOOLS, TOOL_HANDLERS, register_tool, validate_tool_parameters
+from tools import TOOL_CATALOG, SUPPORTED_TOOLS, TOOL_HANDLERS, validate_tool_parameters
+from handlers import register_all_handlers
 
 app = FastAPI(title="LLM Local Bridge API")
 
@@ -71,147 +72,8 @@ async def get_context(token: str = Depends(verify_token)):
         "context_prompt": prompt_text
     }
 
-
-
-@register_tool("execute_command")
-async def _handle_execute_command(params: Dict[str, Any]):
-    cmd = params.get("command", "").strip()
-    if cmd.startswith("git ") or cmd == "git":
-        return {
-            "status": "error",
-            "output": "[Bridge 格式防護] 禁止透過 execute_command 執行 git 指令。請改用專屬的 git 工具 (如 git_status, git_diff, git_log, git_blame, git_branch, git_clean, git_pull, git_push, git_clone) 以確保工作區安全性。",
-            "exit_code": -1
-        }
-    timeout = params.get("timeout", 30)
-    return await executor.run_shell_command(cmd, timeout=timeout)
-
-@register_tool("run_script")
-async def _handle_run_script(params: Dict[str, Any]):
-    code = params.get("code", "")
-    language = params.get("language", "python")
-    timeout = params.get("timeout", 30)
-    return await executor.run_transient_script(code=code, language=language, timeout=timeout)
-
-@register_tool("file_write")
-async def _handle_file_write(params: Dict[str, Any]):
-    path = params.get("path", "")
-    content = params.get("content", "")
-    return executor.write_workspace_file(path, content)
-
-@register_tool("file_replace")
-async def _handle_file_replace(params: Dict[str, Any]):
-    path = params.get("path", "")
-    target = params.get("target", "")
-    replacement = params.get("replacement", "")
-    return executor.replace_file_content(path, target, replacement)
-
-@register_tool("patch_and_test")
-async def _handle_patch_and_test(params: Dict[str, Any]):
-    path = params.get("path", "")
-    target = params.get("target", "")
-    replacement = params.get("replacement", "")
-    test_cmd = params.get("test_command", "")
-    timeout = params.get("timeout", 30)
-    auto_rollback = params.get("auto_rollback", False)
-    return await executor.patch_and_test_file(path, target, replacement, test_cmd, timeout=timeout, auto_rollback=auto_rollback)
-
-@register_tool("file_read")
-async def _handle_file_read(params: Dict[str, Any]):
-    path = params.get("path", "")
-    start_line = params.get("start_line")
-    end_line = params.get("end_line")
-    return executor.read_workspace_file(path, start_line=start_line, end_line=end_line)
-
-@register_tool("git_diff")
-async def _handle_git_diff(params: Dict[str, Any]):
-    path = params.get("path", "")
-    return executor.get_workspace_git_diff(path)
-
-@register_tool("git_status")
-async def _handle_git_status(params: Dict[str, Any]):
-    return await github_client.handle_github_action("status", params)
-
-@register_tool("git_log")
-async def _handle_git_log(params: Dict[str, Any]):
-    return await github_client.handle_github_action("log", params)
-
-@register_tool("git_blame")
-async def _handle_git_blame(params: Dict[str, Any]):
-    return await github_client.handle_github_action("blame", params)
-
-@register_tool("git_branch")
-async def _handle_git_branch(params: Dict[str, Any]):
-    return await github_client.handle_github_action("branch", params)
-
-@register_tool("git_checkout")
-async def _handle_git_checkout(params: Dict[str, Any]):
-    return await github_client.handle_github_action("checkout", params)
-
-@register_tool("git_clean")
-async def _handle_git_clean(params: Dict[str, Any]):
-    return await github_client.handle_github_action("clean", params)
-
-@register_tool("list_dir")
-async def _handle_list_dir(params: Dict[str, Any]):
-    path = params.get("path", "")
-    max_depth = params.get("max_depth", 3)
-    return executor.list_workspace_dir(path, max_depth=max_depth)
-
-@register_tool("get_outline")
-async def _handle_get_outline(params: Dict[str, Any]):
-    path = params.get("path", "")
-    return executor.get_file_outline(path)
-
-@register_tool("search_codebase")
-async def _handle_search_codebase(params: Dict[str, Any]):
-    query = params.get("query", "")
-    path = params.get("path", "")
-    include_pattern = params.get("include_pattern", "")
-    max_results = int(params.get("max_results", 50))
-    return executor.search_codebase(query, path=path, include_pattern=include_pattern, max_results=max_results)
-
-@register_tool("find_references")
-async def _handle_find_references(params: Dict[str, Any]):
-    symbol = params.get("symbol", "")
-    file_type = params.get("file_type", "")
-    scope_dir = params.get("scope_dir", "")
-    return executor.find_references(symbol, file_type=file_type, scope_dir=scope_dir)
-
-@register_tool("git_clone")
-async def _handle_git_clone(params: Dict[str, Any]):
-    return await github_client.handle_github_action("clone", params)
-
-@register_tool("git_pull")
-async def _handle_git_pull(params: Dict[str, Any]):
-    return await github_client.handle_github_action("pull", params)
-
-@register_tool("git_push")
-async def _handle_git_push(params: Dict[str, Any]):
-    return await github_client.handle_github_action("push", params)
-
-@register_tool("capture_memory")
-async def _handle_capture_memory(params: Dict[str, Any]):
-    snapshot = memory_manager.capture_snapshot()
-    return {"status": "success", "output": "專案架構快照已更新", "snapshot": snapshot}
-
-@register_tool("list_tool")
-async def _handle_list_tool(params: Dict[str, Any]):
-    category = params.get("category", "").strip().lower()
-    if category:
-        matched_tools = TOOL_CATALOG.get(category, [])
-        return {
-            "status": "success",
-            "category": category,
-            "total_tools": len(matched_tools),
-            "tools": matched_tools,
-            "exit_code": 0
-        }
-    return {
-        "status": "success",
-        "total_tools": len(SUPPORTED_TOOLS),
-        "tools": TOOL_CATALOG,
-        "exit_code": 0
-    }
+# 註冊模組化工具 handler
+register_all_handlers()
 
 import inspect
 
