@@ -1,5 +1,9 @@
 # Changelog & Release Notes
 
+## v4.12.0 (2026-09-13)
+- **Forced Tool Call Mode (`tampermonkey_script.js`)**: 新增強制工具呼叫按鈕 (`⚡ ToolCall: ON/OFF`) 與 GM 儲存狀態持久化；開啟時自動為非指令輸入注入 `[TOOL CALL REQUIRE]` 前綴。
+- **Strict Directives in System Prompt**: 在系統提示詞中補充第「五、強制工具呼叫規範」，指示模型偵測到該標示時必須直接輸出 `tool_call` 區塊完成任務，禁止純文字回覆。
+
 ## v4.11.0 (2026-09-04)
 - **Tampermonkey Script v4.11.0 Upgrade**: 同步更新前端使用者腳本至 v4.11.0，正式支援擴充之安全 Git 工具鏈（status, log, blame, branch, clean, checkout）。
 - **Git Tool Expansion (`git_checkout`, `git_branch`, `git_clean`)**: 完善 Git 工具鏈，新增 `git_checkout` 單檔復原與分支切換能力，修復 `git_diff` 在 Windows 上的路徑解析 (`WinError 267`)。

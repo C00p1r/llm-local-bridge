@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         LLM Local Bridge Agent (v4.11.0 - Extended Safe Git Tools)
+// @name         LLM Local Bridge Agent (v4.12.0 - Forced Tool Call Mode)
 // @namespace    https://local.bridge/
-// @version      4.11.0
-// @description  LLM Local Bridge with codebase search, symbol navigation, safe git tools (status, log, blame, branch, clean), and batch execution
+// @version      4.12.0
+// @description  LLM Local Bridge with codebase search, symbol navigation, safe git tools, batch execution, and forced tool call toggle
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
 // @match        https://gemini.google.com/*
@@ -31,7 +31,7 @@
     window.__llm_local_bridge_loaded__ = true;
 
     console.log(
-        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.11.0 (Extended Safe Git Tools)',
+        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.12.0 (Forced Tool Call Mode)',
         'color:#22c55e;font-weight:bold;font-size:14px;'
     );
 
@@ -159,10 +159,17 @@
   }
 ]
 \`\`\`
+
+### 五、 強制工具呼叫規範 (Forced Tool Call Mode)
+- 當使用者的訊息開頭包含標示 \`[TOOL CALL REQUIRE]\` 時，代表此請求必須且只能透過輸出工具呼叫指令來完成。
+- 收到該標示時，嚴禁純文字敷衍或僅輸出文字說明；你的第一反應與輸出主體必須是合法的 \`\`\`tool_call 程式碼區塊。
+- 若缺乏足夠環境資訊，請立即以批次方式調用 list_dir、search_codebase 或 file_read 進行探索。
 `;
 
 
     let sessionToken = GM_getValue('session_token', '');
+    let isForceToolCall = GM_getValue('llm_force_tool_call', false);
+    const TOOL_CALL_PREFIX = '[TOOL CALL REQUIRE] ';
     const BASE_URL = 'http://127.0.0.1:8000';
     let isExecuting = false;
     let isNewChat = true;
@@ -193,7 +200,21 @@
         badge.id = 'llm-bridge-metrics-badge';
         badge.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:999999;background:#1e293b;color:#f8fafc;padding:6px 12px;border-radius:20px;font-family:sans-serif;font-size:12px;box-shadow:0 4px 12px rgba(0,0,0,0.25);border:1px solid #334155;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;';
         badge.title = '點擊重設指標或更新 Token';
-        badge.innerHTML = `<span style="width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block;"></span><span id="llm-bridge-metrics-text">Bridge Ready</span>`;
+        badge.innerHTML = `<span style="width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block;"></span><span id="llm-bridge-metrics-text">Bridge Ready</span><button id="llm-bridge-force-toggle" type="button" style="margin-left:6px;padding:2px 8px;font-size:11px;font-weight:bold;border-radius:10px;border:none;cursor:pointer;outline:none;"></button>`;
+        const toggleBtn = badge.querySelector('#llm-bridge-force-toggle');
+        function updateToggleBtn() {
+            if (!toggleBtn) return;
+            toggleBtn.textContent = isForceToolCall ? '⚡ ToolCall: ON' : '⚡ ToolCall: OFF';
+            toggleBtn.style.background = isForceToolCall ? '#10b981' : '#475569';
+            toggleBtn.style.color = '#ffffff';
+        }
+        updateToggleBtn();
+        toggleBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            isForceToolCall = !isForceToolCall;
+            GM_setValue('llm_force_tool_call', isForceToolCall);
+            updateToggleBtn();
+        });
         badge.addEventListener('click', () => {
             const choice = prompt('請選擇操作：\n1. 更新 Session Token\n2. 重設調用計數器\n輸入序號 (1 或 2)：', '1');
             if (choice === '1') {
@@ -539,7 +560,11 @@
             console.log('[Bridge] 正在取得工作區快照並注入 Prompt...');
 
             const memoryContext = await fetchContextPrompt();
-            const fullPrompt = `${BASE_SYSTEM_PROMPT}\n${memoryContext}\n---\n使用者的輸入如下：\n${val.trim()}`;
+            const cleanVal = val.trim();
+            const userPromptText = (isForceToolCall && !cleanVal.startsWith('[TOOL CALL REQUIRE]'))
+                ? `${TOOL_CALL_PREFIX}${cleanVal}`
+                : cleanVal;
+            const fullPrompt = `${BASE_SYSTEM_PROMPT}\n${memoryContext}\n---\n使用者的輸入如下：\n${userPromptText}`;
 
             await submitToLLM(fullPrompt);
         }
