@@ -1,5 +1,8 @@
 # Changelog & Release Notes
 
+## v4.12.2 (2026-09-13)
+- **Exclude Tool Results from Forced Prefix (`tampermonkey_script.js`)**: 在 `handleUserSend` 過濾 `[TOOL_RESULT]` 訊息，避免自動回填執行結果觸發點擊或輸入時被誤加 `[TOOL CALL REQUIRE]`，消除不必要的重複解析並恢復正常的生成速度。
+
 ## v4.12.1 (2026-09-13)
 - **Continuous Forced Tool Call Prefixing (`tampermonkey_script.js`)**: 修復過往僅首則對話注入前綴的限制；改為全對話週期監聽，只要 ToolCall 處於開啟狀態，後續輸入均會自動追加 `[TOOL CALL REQUIRE]` 前綴，並避免重複注入 System Prompt。
 

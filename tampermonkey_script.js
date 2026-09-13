@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         LLM Local Bridge Agent (v4.12.1 - Continuous Forced Tool Call)
+// @name         LLM Local Bridge Agent (v4.12.2 - Filter Tool Results from Forced Mode)
 // @namespace    https://local.bridge/
-// @version      4.12.1
+// @version      4.12.2
 // @description  LLM Local Bridge with codebase search, symbol navigation, safe git tools, batch execution, and forced tool call toggle
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
@@ -31,7 +31,7 @@
     window.__llm_local_bridge_loaded__ = true;
 
     console.log(
-        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.12.1 (Continuous Forced Tool Call)',
+        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.12.2 (Filter Tool Results from Forced Mode)',
         'color:#22c55e;font-weight:bold;font-size:14px;'
     );
 
@@ -550,9 +550,9 @@
 
         const rawVal = inputEl.innerText || inputEl.value || '';
         const cleanVal = rawVal.trim();
-        if (!cleanVal || cleanVal.startsWith('[SYSTEM INSTRUCTION')) return;
+        if (!cleanVal || cleanVal.startsWith('[SYSTEM INSTRUCTION') || cleanVal.startsWith('[TOOL_RESULT]')) return;
 
-        const needsPrefix = isForceToolCall && !cleanVal.startsWith('[TOOL CALL REQUIRE]');
+        const needsPrefix = isForceToolCall && !cleanVal.startsWith('[TOOL CALL REQUIRE]') && !cleanVal.startsWith('[TOOL_RESULT]');
         const textWithPrefix = needsPrefix ? `${TOOL_CALL_PREFIX}${cleanVal}` : cleanVal;
 
         if (isNewChat) {
