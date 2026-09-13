@@ -1,5 +1,8 @@
 # Changelog & Release Notes
 
+## v4.12.1 (2026-09-13)
+- **Continuous Forced Tool Call Prefixing (`tampermonkey_script.js`)**: 修復過往僅首則對話注入前綴的限制；改為全對話週期監聽，只要 ToolCall 處於開啟狀態，後續輸入均會自動追加 `[TOOL CALL REQUIRE]` 前綴，並避免重複注入 System Prompt。
+
 ## v4.12.0 (2026-09-13)
 - **Forced Tool Call Mode (`tampermonkey_script.js`)**: 新增強制工具呼叫按鈕 (`⚡ ToolCall: ON/OFF`) 與 GM 儲存狀態持久化；開啟時自動為非指令輸入注入 `[TOOL CALL REQUIRE]` 前綴。
 - **Strict Directives in System Prompt**: 在系統提示詞中補充第「五、強制工具呼叫規範」，指示模型偵測到該標示時必須直接輸出 `tool_call` 區塊完成任務，禁止純文字回覆。

@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         LLM Local Bridge Agent (v4.12.0 - Forced Tool Call Mode)
+// @name         LLM Local Bridge Agent (v4.12.1 - Continuous Forced Tool Call)
 // @namespace    https://local.bridge/
-// @version      4.12.0
+// @version      4.12.1
 // @description  LLM Local Bridge with codebase search, symbol navigation, safe git tools, batch execution, and forced tool call toggle
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
@@ -31,7 +31,7 @@
     window.__llm_local_bridge_loaded__ = true;
 
     console.log(
-        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.12.0 (Forced Tool Call Mode)',
+        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.12.1 (Continuous Forced Tool Call)',
         'color:#22c55e;font-weight:bold;font-size:14px;'
     );
 
@@ -541,8 +541,6 @@
     }, detactInterval);
 
     async function handleUserSend(e) {
-        if (!isNewChat) return;
-
         const isChatGPT = location.hostname.includes('chatgpt') || location.hostname.includes('openai');
         const inputEl = isChatGPT
             ? document.querySelector('#prompt-textarea')
@@ -550,23 +548,32 @@
 
         if (!inputEl) return;
 
-        const val = inputEl.innerText || inputEl.value || '';
-        if (val.trim() && !val.startsWith('[SYSTEM INSTRUCTION')) {
+        const rawVal = inputEl.innerText || inputEl.value || '';
+        const cleanVal = rawVal.trim();
+        if (!cleanVal || cleanVal.startsWith('[SYSTEM INSTRUCTION')) return;
+
+        const needsPrefix = isForceToolCall && !cleanVal.startsWith('[TOOL CALL REQUIRE]');
+        const textWithPrefix = needsPrefix ? `${TOOL_CALL_PREFIX}${cleanVal}` : cleanVal;
+
+        if (isNewChat) {
             if (e) {
                 e.preventDefault();
                 e.stopPropagation();
             }
             isNewChat = false;
-            console.log('[Bridge] 正在取得工作區快照並注入 Prompt...');
+            console.log('[Bridge] 首次對話：正在取得工作區快照並注入 Prompt...');
 
             const memoryContext = await fetchContextPrompt();
-            const cleanVal = val.trim();
-            const userPromptText = (isForceToolCall && !cleanVal.startsWith('[TOOL CALL REQUIRE]'))
-                ? `${TOOL_CALL_PREFIX}${cleanVal}`
-                : cleanVal;
-            const fullPrompt = `${BASE_SYSTEM_PROMPT}\n${memoryContext}\n---\n使用者的輸入如下：\n${userPromptText}`;
+            const fullPrompt = `${BASE_SYSTEM_PROMPT}\n${memoryContext}\n---\n使用者的輸入如下：\n${textWithPrefix}`;
 
             await submitToLLM(fullPrompt);
+        } else if (needsPrefix) {
+            if (e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            console.log('[Bridge] 後續對話：自動追加 [TOOL CALL REQUIRE] 前綴');
+            await submitToLLM(textWithPrefix);
         }
     }
 
