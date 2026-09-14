@@ -2,6 +2,8 @@ import os
 import shutil
 import subprocess
 import json
+import asyncio
+import base64
 import urllib.request
 import urllib.error
 from pathlib import Path
@@ -236,6 +238,21 @@ def _github_api_request(method: str, url: str, headers: Dict[str, str], payload:
     except Exception as e:
         return {"status_code": -1, "data": {}, "raw": str(e), "error": True}
 
+async def _github_api_request_async(method: str, url: str, headers: Dict[str, str], payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    return await asyncio.to_thread(_github_api_request, method, url, headers, payload)
+
+async def _fetch_all_remote_tree_entries(api_base: str, tree_sha: str, headers: Dict[str, str]) -> Dict[str, str]:
+    """遞迴抓取遠端 tree，建立 path -> sha 映射"""
+    url = f"{api_base}/git/trees/{tree_sha}?recursive=1"
+    res = await _github_api_request_async("GET", url, headers)
+    if res.get("error") or "tree" not in res.get("data", {}):
+        return {}
+    return {
+        item["path"]: item["sha"]
+        for item in res["data"]["tree"]
+        if item.get("type") == "blob" and "path" in item and "sha" in item
+    }
+
 async def push_workspace_to_github(repo: str, branch: str = "main", message: str = "Update from LLM Bridge", subfolder: str = "") -> Dict[str, Any]:
     if not GITHUB_TOKEN:
         return {"status": "error", "output": "未設定 GITHUB_TOKEN，無法使用 GitHub API 進行推送", "exit_code": -1}
@@ -246,50 +263,109 @@ async def push_workspace_to_github(repo: str, branch: str = "main", message: str
     }
     api_base = f"https://api.github.com/repos/{repo}"
 
-    ref_res = _github_api_request("GET", f"{api_base}/git/ref/heads/{branch}", headers)
+    ref_res = await _github_api_request_async("GET", f"{api_base}/git/ref/heads/{branch}", headers)
     if ref_res.get("error"):
         return {"status": "error", "output": f"獲取分支 {branch} 失敗: {ref_res.get('raw')}", "exit_code": -1}
     parent_commit_sha = ref_res["data"]["object"]["sha"]
 
-    commit_res = _github_api_request("GET", f"{api_base}/git/commits/{parent_commit_sha}", headers)
+    commit_res = await _github_api_request_async("GET", f"{api_base}/git/commits/{parent_commit_sha}", headers)
     if commit_res.get("error"):
         return {"status": "error", "output": f"獲取 Commit {parent_commit_sha} 失敗: {commit_res.get('raw')}", "exit_code": -1}
     base_tree_sha = commit_res["data"]["tree"]["sha"]
 
+    # 取得遠端現有 tree 檔案 sha 快取，以達成差異比對 (避免全量重複上傳)
+    remote_tree_map = await _fetch_all_remote_tree_entries(api_base, base_tree_sha, headers)
+
     target_path = _resolve_target_path(subfolder)
-    tree_items = []
     ignored_dirs = {".git", "node_modules", "__pycache__", ".venv", "venv", "target", "dist"}
 
+    # 1. 快速掃描本地所有檔案
+    local_files: List[Path] = []
     for root, dirs, files in os.walk(target_path):
         dirs[:] = [d for d in dirs if d not in ignored_dirs]
         for f in files:
-            file_full = Path(root) / f
-            try:
-                content_bytes = file_full.read_bytes()
-                blob_payload = {"content": content_bytes.decode("utf-8"), "encoding": "utf-8"}
-            except UnicodeDecodeError:
-                import base64
-                blob_payload = {"content": base64.b64encode(content_bytes).decode("utf-8"), "encoding": "base64"}
-            except Exception:
-                continue
+            local_files.append(Path(root) / f)
 
-            blob_res = _github_api_request("POST", f"{api_base}/git/blobs", headers, blob_payload)
-            if blob_res.get("error"):
-                return {"status": "error", "output": f"上傳 Blob 失敗 ({f}): {blob_res.get('raw')}", "exit_code": -1}
-            
-            rel_path = str(file_full.relative_to(target_path)).replace("\\", "/")
+    if not local_files:
+        return {"status": "error", "output": "沒有發現可推送的檔案", "exit_code": -1}
+
+    # 2. 計算 Git Blob SHA 進行差異感知，僅針對變更或新增之檔案發送 API
+    def _read_and_inspect_file(file_full: Path, rel_path: str):
+        try:
+            content_bytes = file_full.read_bytes()
+            # Git blob sha1 計算: sha1("blob " + len + "\0" + bytes)
+            import hashlib
+            git_header = f"blob {len(content_bytes)}\0".encode("utf-8")
+            local_sha = hashlib.sha1(git_header + content_bytes).hexdigest()
+            remote_sha = remote_tree_map.get(rel_path)
+
+            need_upload = (local_sha != remote_sha)
+            blob_payload = None
+            if need_upload:
+                try:
+                    blob_payload = {"content": content_bytes.decode("utf-8"), "encoding": "utf-8"}
+                except UnicodeDecodeError:
+                    blob_payload = {"content": base64.b64encode(content_bytes).decode("utf-8"), "encoding": "base64"}
+            return rel_path, local_sha, need_upload, blob_payload
+        except Exception:
+            return rel_path, None, False, None
+
+    file_diff_tasks = [
+        asyncio.to_thread(_read_and_inspect_file, f, str(f.relative_to(target_path)).replace("\\", "/"))
+        for f in local_files
+    ]
+    file_diff_results = await asyncio.gather(*file_diff_tasks)
+
+    tree_items = []
+    pending_uploads = []
+    for rel_path, local_sha, need_upload, blob_payload in file_diff_results:
+        if not local_sha:
+            continue
+        if need_upload and blob_payload:
+            pending_uploads.append((rel_path, blob_payload))
+        else:
+            # 檔案內容與遠端一致，直接沿用既有 SHA
             tree_items.append({
                 "path": rel_path,
                 "mode": "100644",
                 "type": "blob",
-                "sha": blob_res["data"]["sha"]
+                "sha": local_sha
             })
 
-    if not tree_items:
-        return {"status": "error", "output": "沒有發現可推送的檔案", "exit_code": -1}
+    # 若需要上傳的檔案過多，進行全域上限保護
+    if len(pending_uploads) > 200:
+        return {
+            "status": "error",
+            "output": f"檢測到待上傳變更檔案過多 ({len(pending_uploads)} 檔)，請先精簡目錄或檢查 .gitignore 排除不必要的檔案",
+            "exit_code": -1
+        }
+
+    # 3. 使用 Semaphore 控制併發度 (10)，並透過 ThreadPool 非同步呼叫，不阻塞 Event Loop
+    semaphore = asyncio.Semaphore(10)
+
+    async def _upload_blob(rel_path: str, payload: Dict[str, Any]):
+        async with semaphore:
+            blob_res = await _github_api_request_async("POST", f"{api_base}/git/blobs", headers, payload)
+            if blob_res.get("error"):
+                raise RuntimeError(f"上傳 Blob 失敗 ({rel_path}): {blob_res.get('raw')}")
+            return {"path": rel_path, "mode": "100644", "type": "blob", "sha": blob_res["data"]["sha"]}
+
+    if pending_uploads:
+        try:
+            upload_tasks = [_upload_blob(rel_path, payload) for rel_path, payload in pending_uploads]
+            uploaded_items = await asyncio.wait_for(asyncio.gather(*upload_tasks), timeout=60)
+            tree_items.extend(uploaded_items)
+        except asyncio.TimeoutError:
+            return {"status": "error", "output": "Blob 上傳作業逾時 (超過 60 秒)", "exit_code": -1}
+        except Exception as e:
+            return {"status": "error", "output": str(e), "exit_code": -1}
+
+    # 4. 若無任何變更，及早返回
+    if not pending_uploads:
+        return {"status": "success", "output": "工作區檔案與遠端一致，無須額外推送提交", "exit_code": 0}
 
     tree_payload = {"base_tree": base_tree_sha, "tree": tree_items}
-    new_tree_res = _github_api_request("POST", f"{api_base}/git/trees", headers, tree_payload)
+    new_tree_res = await _github_api_request_async("POST", f"{api_base}/git/trees", headers, tree_payload)
     if new_tree_res.get("error"):
         return {"status": "error", "output": f"建立 Tree 失敗: {new_tree_res.get('raw')}", "exit_code": -1}
     new_tree_sha = new_tree_res["data"]["sha"]
@@ -299,17 +375,17 @@ async def push_workspace_to_github(repo: str, branch: str = "main", message: str
         "tree": new_tree_sha,
         "parents": [parent_commit_sha]
     }
-    new_commit_res = _github_api_request("POST", f"{api_base}/git/commits", headers, commit_payload)
+    new_commit_res = await _github_api_request_async("POST", f"{api_base}/git/commits", headers, commit_payload)
     if new_commit_res.get("error"):
         return {"status": "error", "output": f"建立 Commit 失敗: {new_commit_res.get('raw')}", "exit_code": -1}
     new_commit_sha = new_commit_res["data"]["sha"]
 
     update_payload = {"sha": new_commit_sha, "force": False}
-    update_ref_res = _github_api_request("PATCH", f"{api_base}/git/refs/heads/{branch}", headers, update_payload)
+    update_ref_res = await _github_api_request_async("PATCH", f"{api_base}/git/refs/heads/{branch}", headers, update_payload)
     if update_ref_res.get("error"):
         return {"status": "error", "output": f"更新分支指標失敗: {update_ref_res.get('raw')}", "exit_code": -1}
 
-    return {"status": "success", "output": f"成功推送至 {repo} 的 {branch} 分支，Commit SHA: {new_commit_sha}", "exit_code": 0}
+    return {"status": "success", "output": f"成功推送至 {repo} 的 {branch} 分支 (共推送 {len(pending_uploads)} 個變更檔案)，Commit SHA: {new_commit_sha}", "exit_code": 0}
 
 async def handle_github_action(action: str, params: Dict[str, Any]) -> Dict[str, Any]:
     action = action.lower()
