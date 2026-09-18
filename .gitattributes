@@ -1,12 +1,8 @@
-# 強制 shell 腳本使用 LF，避免 CRLF 導致 shebang 失效或 'set: pipefail: invalid option name'
+# 僅對「CRLF 會導致執行失敗」的檔案強制 LF。
+# 其餘檔案（Python、Markdown、JS 等）維持倉庫原有行尾，避免產生大量無謂的 diff 雜訊。
+
+# Shell 腳本：CRLF 會使 shebang 失效，並觸發 'set: pipefail: invalid option name'
 *.sh text eol=lf
 
-# Dockerfile 亦須 LF（避免 RUN 行接續的反斜線被 \r 破壞）
+# Dockerfile：CRLF 會破壞 RUN 行接續的反斜線
 Dockerfile text eol=lf
-
-# 一般文字檔自動正規化
-*.py text eol=lf
-*.md text eol=lf
-*.txt text eol=lf
-*.js text eol=lf
-*.json text eol=lf
