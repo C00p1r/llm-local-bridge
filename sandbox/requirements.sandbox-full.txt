@@ -1,0 +1,106 @@
+# LLM Bridge Sandbox — 完整預裝模組（重量級，選用）
+# 依使用者提供的 Package Version.txt 整理
+# 於 Dockerfile 取消註解後建置
+
+# --- 核心 ---
+fastapi
+uvicorn
+starlette
+pydantic
+pydantic_core
+pydantic-settings
+anyio
+h11
+httptools
+websockets
+watchfiles
+
+# --- 網路 / HTTP ---
+requests
+httpx
+urllib3
+certifi
+charset-normalizer
+idna
+curl_cffi
+httpcore
+multitasking
+
+# --- 資料處理 ---
+numpy
+pandas
+python-dateutil
+pytz
+tzdata
+
+# --- 視覺 / 影像（對應 ocr / rapidocr）---
+opencv-python
+pillow
+matplotlib
+contourpy
+fonttools
+kiwisolver
+pyparsing
+shapely
+pyclipper
+
+# --- OCR / 機器學習推論 ---
+rapidocr
+onnxruntime
+flatbuffers
+protobuf
+
+# --- 網頁解析 / 檔案 ---
+beautifulsoup4
+soupsieve
+lxml
+PyYAML
+python-dotenv
+jsonschema
+jsonschema-specifications
+referencing
+rpds-py
+attrs
+
+# --- 金融 / 資料來源 ---
+yfinance
+waybackpy
+peewee
+
+# --- 序列化 / 設定 ---
+omegaconf
+antlr4-python3-runtime
+pycparser
+cffi
+six
+
+# --- Kaggle / Jupyter 工具鏈 ---
+kaggle
+kagglesdk
+jupyter_core
+jupytext
+nbformat
+traitlets
+platformdirs
+
+# --- Markdown / 文件 ---
+markdown-it-py
+mdit-py-plugins
+mdurl
+bleach
+webencodings
+
+# --- 通用工具 ---
+click
+colorama
+colorlog
+tqdm
+typing_extensions
+typing-inspection
+fastjsonschema
+packaging
+text-unidecode
+python-slugify
+annotated-doc
+annotated-types
+mss

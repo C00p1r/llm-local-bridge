@@ -1,5 +1,11 @@
 # Changelog & Release Notes
 
+## v4.13.3 (2026-09-18)
+- **Custom Sandbox Image Support (`sandbox/`, `config.py`, `sandbox.py`)**: 新增可自訂沙盒執行映像的機制。`config.py` 加入 `SANDBOX_IMAGE` 環境變數（預設 `python:3.11-slim`），`sandbox.py` 改由設定讀取，可透過 `.env` 切換為預裝工具的映像。
+- **Sandbox Dockerfile & Build Script (`sandbox/Dockerfile`, `sandbox/build.sh`)**: 新增基於 `python:3.11-slim` 的映像定義，預裝 `git`、`ripgrep`、`nodejs`/`npm`、`jq` 等工具，並提供一鍵建置腳本與安裝後驗證。
+- **Preinstalled Python Modules (`sandbox/requirements.sandbox.txt`, `requirements.sandbox-full.txt`)**: 提供兩層 requirements — 核心輕量層（requests/httpx/numpy/pandas/yfinance/waybackpy 等）與完整重量層（opencv/rapidocr/onnxruntime/kaggle/fastapi 等），可在**不開放沙盒網路**的前提下預裝常用模組。
+- **Docs**: 新增 `docs/` 下三份分析文件（工具摩擦點、斷網限制、網路風險），作為後續擴充決策依據。
+
 ## v4.13.2 (2026-09-18)
 - **Fix DeepSeek Send Button Misclicking Sidebar (`tampermonkey_script.js`)**: 修復 `getSendButton()` 的 DeepSeek 分支在全域 fallback 中誤抓側邊欄按鈕（新對話／歷史項目）的問題。移除危險的全域 `div[role="button"]:has(svg)` 查詢，改為嚴格以輸入框為錨點、由後往前尋找送出鍵，並排除位於 sidebar/nav/history/conversation 內的節點；找不到時回傳 `null` 交由 Enter 備援。
 - **Send Button Readiness Retry**: `submitToLLM` 新增按鈕就緒重試（最多 6 次、每次 120ms），避免 DeepSeek 輸入後送出鍵尚未啟用即送出失敗。

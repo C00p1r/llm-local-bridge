@@ -25,7 +25,8 @@
 ## 專案結構
 
 * `server.py`：本機 FastAPI 伺服器，負責權限驗證（Session Token）、Docker 狀態自檢與工具請求派發（支援 Batch Array 與 Fail-Fast 機制）。
-* `executor.py`：指令執行器，透過 Docker 斷網沙盒（`python:3.11-slim`）安全隔離執行 Bash 指令，支援暫存多語言腳本（`run_transient_script`）與 CRLF/LF 自動正規化。
+* `executor.py`：指令執行器，透過 Docker 斷網沙盒安全隔離執行 Bash 指令，支援暫存多語言腳本（`run_transient_script`）與 CRLF/LF 自動正規化。
+* `sandbox/`：自訂沙盒映像資源（`Dockerfile` + `build.sh` + requirements 清單）。可在維持 `--network none` 的前提下，預裝 node / git / ripgrep 與常用 Python 模組。
 * `github_client.py`：GitHub 協同模組，由主機端代為處理 `clone`、`fetch`、`pull`、`push_workspace` 及 REST API 操作。
 * `memory_manager.py`：專案快照與記憶體管理，動態維護工作區目錄結構與環境狀態。
 * `config.py`：環境與安全設定（工作區路徑、逾時時間、字數限制、Token 生成）。

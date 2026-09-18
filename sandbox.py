@@ -1,9 +1,9 @@
 import uuid
 import os
 from pathlib import Path
-from config import WORKSPACE_DIR, MAX_OUTPUT_CHARS, DEFAULT_TIMEOUT_SEC
+from config import WORKSPACE_DIR, MAX_OUTPUT_CHARS, DEFAULT_TIMEOUT_SEC, SANDBOX_IMAGE
 
-DOCKER_IMAGE = "python:3.11-slim"
+DOCKER_IMAGE = SANDBOX_IMAGE
 
 def _get_docker_user_args() -> list:
     """在 POSIX / WSL 環境自動對齊宿主機 UID:GID，防止產生 root 唯讀檔案鎖死宿主操作"""

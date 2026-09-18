@@ -51,3 +51,7 @@ ALLOWED_ORIGINS = [
 
 MAX_OUTPUT_CHARS = 8000
 DEFAULT_TIMEOUT_SEC = 20
+
+# 沙盒執行映像：可自訂為預裝 node/git/rg 與常用 Python 模組的映像
+# 預設沿用官方 slim 映像；建置自訂映像後於 .env 設定 SANDBOX_IMAGE
+SANDBOX_IMAGE = os.getenv("SANDBOX_IMAGE", "python:3.11-slim")
