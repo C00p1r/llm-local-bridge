@@ -1,0 +1,12 @@
+# 強制 shell 腳本使用 LF，避免 CRLF 導致 shebang 失效或 'set: pipefail: invalid option name'
+*.sh text eol=lf
+
+# Dockerfile 亦須 LF（避免 RUN 行接續的反斜線被 \r 破壞）
+Dockerfile text eol=lf
+
+# 一般文字檔自動正規化
+*.py text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.js text eol=lf
+*.json text eol=lf

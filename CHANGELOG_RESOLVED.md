@@ -1,5 +1,10 @@
 # Changelog & Release Notes
 
+## v4.13.4 (2026-09-18)
+- **Fix `set: pipefail: invalid option name` (`sandbox/build.sh`)**: 修正建置腳本因 CRLF 行尾導致 shebang 失效（被 `sh`/dash 執行），進而觸發 `set -o pipefail` 不支援的錯誤。改寫為 POSIX 相容（`#!/bin/sh` + `set -eu`），並以條件式啟用 pipefail（bash 才生效、dash 自動略過）。
+- **Normalize Sandbox Files to LF**: 將 `sandbox/` 下所有檔案（Dockerfile、build.sh、requirements）正規化為 LF，避免 Dockerfile `RUN` 行接續的反斜線被 `\r` 破壞。
+- **Add `.gitattributes`**: 強制 `*.sh`、`Dockerfile` 及文字檔以 LF 儲存，從源頭防止 CRLF 問題再次發生。
+
 ## v4.13.3 (2026-09-18)
 - **Custom Sandbox Image Support (`sandbox/`, `config.py`, `sandbox.py`)**: 新增可自訂沙盒執行映像的機制。`config.py` 加入 `SANDBOX_IMAGE` 環境變數（預設 `python:3.11-slim`），`sandbox.py` 改由設定讀取，可透過 `.env` 切換為預裝工具的映像。
 - **Sandbox Dockerfile & Build Script (`sandbox/Dockerfile`, `sandbox/build.sh`)**: 新增基於 `python:3.11-slim` 的映像定義，預裝 `git`、`ripgrep`、`nodejs`/`npm`、`jq` 等工具，並提供一鍵建置腳本與安裝後驗證。

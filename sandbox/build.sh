@@ -1,9 +1,16 @@
-#!/usr/bin/env bash
+#!/bin/sh
 # 建置沙盒映像（需在有網路的主機端執行一次）
-set -euo pipefail
+# 用法：sh sandbox/build.sh [image_name]
+set -eu
+
+# 若 shell 支援 pipefail 才啟用（bash/ksh/zsh）；dash/sh 會自動略過，
+# 避免 "set: pipefail: invalid option name" 錯誤
+if (set -o pipefail) 2>/dev/null; then
+    set -o pipefail
+fi
 
 IMAGE_NAME="${1:-llm-bridge-sandbox:latest}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 command -v docker >/dev/null 2>&1 || { echo "[ERROR] 找不到 docker CLI"; exit 1; }
 
