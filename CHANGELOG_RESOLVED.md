@@ -1,5 +1,12 @@
 # Changelog & Release Notes
 
+## v4.13.2 (2026-09-18)
+- **Fix DeepSeek Send Button Misclicking Sidebar (`tampermonkey_script.js`)**: 修復 `getSendButton()` 的 DeepSeek 分支在全域 fallback 中誤抓側邊欄按鈕（新對話／歷史項目）的問題。移除危險的全域 `div[role="button"]:has(svg)` 查詢，改為嚴格以輸入框為錨點、由後往前尋找送出鍵，並排除位於 sidebar/nav/history/conversation 內的節點；找不到時回傳 `null` 交由 Enter 備援。
+- **Send Button Readiness Retry**: `submitToLLM` 新增按鈕就緒重試（最多 6 次、每次 120ms），避免 DeepSeek 輸入後送出鍵尚未啟用即送出失敗。
+- **Complete Enter Fallback Sequence**: Enter 備援改為派發完整 `keydown` / `keypress` / `keyup` 事件序列（含 `composed: true`），提升與框架事件處理的相容性。
+- **Programmatic Submit Guard**: 新增 `isProgrammaticSubmit` 旗標，避免 `submitToLLM` 合成的 click / Enter 事件被全域監聽器再次攔截，消除重複送出與焦點錯亂。
+- **Fix Prompt Newline Escaping**: 修正首次對話注入 Prompt 中 `---\\n` 被渲染為字面文字而非實際換行的問題。
+
 ## v4.13.1 (2026-09-18)
 - **Fix Premature Tool Execution on DeepSeek (`tampermonkey_script.js`)**: 修復 DeepSeek 上模型尚未輸出完成 tool_call 即被提早執行的問題。新增「輸出穩定度檢測」機制，tool_call 文字需連續兩輪輪詢維持不變（`STABLE_THRESHOLD`）才視為輸出完成。
 - **Peek-then-Consume Parsing**: 重構 `getNextToolCall(peek)` 支援窺視模式；偵測階段不再立即標記 `bridgeExecuted`，待輸出穩定後才正式消費，避免半成品或暫時無法解析的片段被提前執行或誤報語法錯誤。

@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         LLM Local Bridge Agent (v4.13.1 - DeepSeek Output Stability Fix)
+// @name         LLM Local Bridge Agent (v4.13.2 - DeepSeek Send-Button Fix)
 // @namespace    https://local.bridge/
-// @version      4.13.1
+// @version      4.13.2
 // @description  LLM Local Bridge supporting ChatGPT, Gemini, and DeepSeek Web with low-latency prompt input and robust tool execution
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
@@ -31,7 +31,7 @@
     window.__llm_local_bridge_loaded__ = true;
 
     console.log(
-        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.13.1 (Multi-Platform: ChatGPT / Gemini / DeepSeek)',
+        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.13.2 (Multi-Platform: ChatGPT / Gemini / DeepSeek)',
         'color:#22c55e;font-weight:bold;font-size:14px;'
     );
 
@@ -182,6 +182,8 @@
     const RESULT_COOLDOWN_MS = 2500;
     let lastSeenToolText = '';
     let stableToolCount = 0;
+    // 程式化送出防護：避免 submitToLLM 合成的 click / Enter 事件被全域監聽器再次攔截而遞迴觸發
+    let isProgrammaticSubmit = false;
 
     function getPlatform() {
         const host = location.hostname;
@@ -422,24 +424,30 @@
         }
 
         if (platform === 'deepseek') {
-            // 先以 DeepSeek 送出按鈕常見的專屬 ID 與 Class 鎖定
-            const directBtn = document.querySelector('#chat-input-send-button, .ds-send-button, [aria-label="发送"], [aria-label="Send"]');
-            if (directBtn) return directBtn;
+            // 1. 明確的送出按鈕 ID / Class（同時排除側邊欄節點）
+            const directBtn = document.querySelector('#chat-input-send-button, .ds-send-button');
+            if (directBtn && !directBtn.closest('[class*="sidebar"], [class*="nav"], [class*="history"], [class*="conversation"]')) {
+                return directBtn;
+            }
 
-            // 若無明確標記，僅在輸入框相鄰的工具列容器內尋找，絕不全域抓取避免命中側邊欄搜尋
+            // 2. 以輸入框為錨點，僅在其鄰近容器中由後往前尋找送出按鈕（嚴禁全域抓取以免誤點側邊欄）
             if (inputEl) {
                 const container = inputEl.closest('form, div[class*="input"], div[class*="footer"], div[class*="bottom"]');
                 if (container) {
                     const candidates = Array.from(container.querySelectorAll('div[role="button"], button'));
-                    // 排除任何帶有 search、clear、history 的按鈕
-                    const validBtn = candidates.find(btn => {
+                    for (let i = candidates.length - 1; i >= 0; i--) {
+                        const btn = candidates[i];
                         const label = (btn.getAttribute('aria-label') || btn.title || '').toLowerCase();
-                        return !label.includes('search') && !label.includes('搜索') && !label.includes('clear');
-                    });
-                    if (validBtn) return validBtn;
+                        if (label.includes('search') || label.includes('搜索') || label.includes('clear') || label.includes('清除') || label.includes('attach') || label.includes('附件')) continue;
+                        if (btn.disabled || btn.getAttribute('aria-disabled') === 'true') continue;
+                        if (!btn.querySelector('svg')) continue;
+                        if (btn.closest('[class*="sidebar"], [class*="nav"], [class*="history"], [class*="conversation"]')) continue;
+                        return btn;
+                    }
                 }
             }
-            return document.querySelector('div[role="button"]:has(svg):not([aria-label*="search"]):not([aria-label*="搜索"])');
+            // 找不到時回傳 null，交由 submitToLLM 以 Enter 鍵備援送出（不再全域亂抓）
+            return null;
         }
 
         // Gemini
@@ -483,25 +491,43 @@
         inputEl.dispatchEvent(new Event('change', { bubbles: true }));
         await new Promise((r) => setTimeout(r, 250));
 
-        // 優先點擊專屬發送按鈕
-        const btn = getSendButton();
-        const isBtnClickable = btn && !btn.disabled && btn.getAttribute('aria-disabled') !== 'true';
+        // 優先點擊專屬發送按鈕：加入重試，等待框架啟用送出鍵（DeepSeek 輸入後按鈕可能延遲就緒）
+        let btn = null;
+        for (let attempt = 0; attempt < 6; attempt++) {
+            const candidate = getSendButton();
+            const clickable = candidate && !candidate.disabled && candidate.getAttribute('aria-disabled') !== 'true';
+            if (clickable) {
+                btn = candidate;
+                break;
+            }
+            await new Promise((r) => setTimeout(r, 120));
+        }
 
-        if (isBtnClickable) {
-            btn.click();
-            console.log('[Bridge] 透過按鈕點擊送出訊息');
-        } else {
-            // 按鈕未就緒或未找到時，直接在輸入框觸發 Enter 送出，避免焦點飄到搜尋列
-            const enterDown = new KeyboardEvent('keydown', {
-                key: 'Enter',
-                code: 'Enter',
-                keyCode: 13,
-                which: 13,
-                bubbles: true,
-                cancelable: true
-            });
-            inputEl.dispatchEvent(enterDown);
-            console.log('[Bridge] 透過輸入框 Enter 模擬送出訊息');
+        isProgrammaticSubmit = true;
+        try {
+            if (btn) {
+                btn.click();
+                console.log('[Bridge] 透過按鈕點擊送出訊息');
+            } else {
+                // 找不到可點擊按鈕時，以完整鍵盤事件序列在輸入框送出（避免焦點飄到側邊欄）
+                inputEl.focus();
+                const mkKey = (type) => new KeyboardEvent(type, {
+                    key: 'Enter',
+                    code: 'Enter',
+                    keyCode: 13,
+                    which: 13,
+                    bubbles: true,
+                    cancelable: true,
+                    composed: true
+                });
+                inputEl.dispatchEvent(mkKey('keydown'));
+                inputEl.dispatchEvent(mkKey('keypress'));
+                inputEl.dispatchEvent(mkKey('keyup'));
+                console.log('[Bridge] 透過輸入框 Enter 模擬送出訊息');
+            }
+        } finally {
+            // 合成事件為同步派發，於下一輪事件迴圈前解除防護即可
+            setTimeout(() => { isProgrammaticSubmit = false; }, 0);
         }
 
         await new Promise((r) => setTimeout(r, 1200));
@@ -737,7 +763,7 @@
             console.log('[Bridge] 首次對話：正在取得工作區快照並注入 Prompt...');
 
             const memoryContext = await fetchContextPrompt();
-            const fullPrompt = `${BASE_SYSTEM_PROMPT}\n${memoryContext}\n---\\n使用者的輸入如下：\n${textWithPrefix}`;
+            const fullPrompt = `${BASE_SYSTEM_PROMPT}\n${memoryContext}\n---\n使用者的輸入如下：\n${textWithPrefix}`;
 
             await submitToLLM(fullPrompt);
         } else if (needsPrefix) {
@@ -753,6 +779,7 @@
     document.addEventListener(
         'keydown',
         async (e) => {
+            if (isProgrammaticSubmit) return;
             if (e.key === 'Enter' && !e.shiftKey) {
                 await handleUserSend(e);
             }
@@ -763,6 +790,7 @@
     document.addEventListener(
         'click',
         async (e) => {
+            if (isProgrammaticSubmit) return;
             const sendBtn = getSendButton();
             if (sendBtn && (e.target === sendBtn || sendBtn.contains(e.target))) {
                 await handleUserSend(e);
