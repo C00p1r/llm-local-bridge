@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         LLM Local Bridge Agent (v4.13.0 - DeepSeek, ChatGPT & Gemini Multi-Web Support)
+// @name         LLM Local Bridge Agent (v4.13.1 - DeepSeek Output Stability Fix)
 // @namespace    https://local.bridge/
-// @version      4.13.0
+// @version      4.13.1
 // @description  LLM Local Bridge supporting ChatGPT, Gemini, and DeepSeek Web with low-latency prompt input and robust tool execution
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
@@ -31,7 +31,7 @@
     window.__llm_local_bridge_loaded__ = true;
 
     console.log(
-        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.13.0 (Multi-Platform: ChatGPT / Gemini / DeepSeek)',
+        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.13.1 (Multi-Platform: ChatGPT / Gemini / DeepSeek)',
         'color:#22c55e;font-weight:bold;font-size:14px;'
     );
 
@@ -176,6 +176,12 @@
     let lastPromptDismissTime = 0;
     let lastExecutionTime = 0;
     let detactInterval = 1500;
+    // 輸出穩定度追蹤：確保模型完整輸出後才解析執行
+    const STABLE_THRESHOLD = 2;
+    // 送出 [TOOL_RESULT] 後的回應冷卻，避免模型尚未開始生成就搶先解析（DeepSeek 尤需）
+    const RESULT_COOLDOWN_MS = 2500;
+    let lastSeenToolText = '';
+    let stableToolCount = 0;
 
     function getPlatform() {
         const host = location.hostname;
@@ -380,9 +386,13 @@
             return Boolean(document.querySelector('button[data-testid="stop-button"], .result-streaming'));
         }
         if (platform === 'deepseek') {
-            // DeepSeek 停止按鈕常見結構
-            const dsStop = document.querySelector('.ds-icon-button[aria-label*="Stop"], .ds-icon-button[aria-label*="停止"], button[aria-label*="Stop"], div[role="button"][aria-label*="Stop"]');
-            return Boolean(dsStop && dsStop.offsetParent !== null);
+            // DeepSeek 停止按鈕常見結構（含繁簡中英文與各類 icon button 樣式）
+            const dsStop = document.querySelector('.ds-icon-button[aria-label*="Stop"], .ds-icon-button[aria-label*="停止"], button[aria-label*="Stop"], button[aria-label*="停止"], button[aria-label*="停止生成"], div[role="button"][aria-label*="Stop"], div[role="button"][aria-label*="停止"], [class*="stop-button"], [data-testid*="stop"]');
+            if (dsStop && dsStop.offsetParent !== null) return true;
+            // 備援：檢查最後一個助手訊息是否仍帶有生成中樣式
+            const latestMsg = document.querySelector('.ds-markdown');
+            if (latestMsg && latestMsg.closest('[class*="streaming"], [class*="generating"], [class*="loading"]')) return true;
+            return false;
         }
         // Gemini
         const geminiStop = document.querySelector('button[aria-label*="Stop"], button[aria-label*="停止"]');
@@ -570,7 +580,7 @@
     }
 
     // 跨平台提取最新助手訊息節點
-    function getNextToolCall() {
+    function getNextToolCall(peek = false) {
         const platform = getPlatform();
         let assistantMessages = [];
 
@@ -614,13 +624,15 @@
 
             const parsed = parseMultiLineJson(text);
             if (parsed) {
+                if (peek) return { parsed, element: el, peeked: true };
                 el.dataset.bridgeExecuted = 'true';
                 const logName = Array.isArray(parsed) ? `Batch (${parsed.length} items)` : parsed.tool;
                 console.log('%c[Bridge] ✓ 成功解析 Tool Call', 'color:#38bdf8;font-weight:bold;', logName, parsed);
                 return { parsed, element: el };
-            } else {
+            } else if (text.startsWith('[') || text.startsWith('{') || text.includes('tool_call')) {
+                if (peek) return { syntaxError: true, element: el, peeked: true };
                 el.dataset.bridgeExecuted = 'true';
-                if (text.startsWith('[') || text.startsWith('{') || text.includes('tool_call')) {
+                {
                     console.warn('[Bridge] ⚠️ 偵測到損壞的 Tool Call JSON 語法');
                     return {
                         syntaxError: true,
@@ -635,12 +647,37 @@
 
     setInterval(async () => {
         const now = Date.now();
-        if (isExecuting || isStreaming() || (now - lastExecutionTime < 1800)) return;
+        if (isExecuting || isStreaming() || (now - lastExecutionTime < RESULT_COOLDOWN_MS)) return;
         createMetricsUI();
 
-        const target = getNextToolCall();
-        if (!target) return;
+        // 以窺視模式（peek）偵測，不標記已消費，以便累積輸出穩定度
+        const peekTarget = getNextToolCall(true);
+        if (!peekTarget) {
+            lastSeenToolText = '';
+            stableToolCount = 0;
+            return;
+        }
 
+        // 輸出穩定度檢測：tool_call 文字需連續 STABLE_THRESHOLD 輪不變，才視為模型輸出完成
+        const currentText = (peekTarget.element && (peekTarget.element.innerText || peekTarget.element.textContent)) || '';
+        if (currentText === lastSeenToolText && currentText.length > 0) {
+            stableToolCount += 1;
+        } else {
+            lastSeenToolText = currentText;
+            stableToolCount = 0;
+            console.log('[Bridge] ⏳ 偵測到 tool_call 輸出中，等待穩定...');
+            return;
+        }
+        if (stableToolCount < STABLE_THRESHOLD) {
+            console.log(`[Bridge] ⏳ 輸出穩定檢測中 (${stableToolCount}/${STABLE_THRESHOLD})...`);
+            return;
+        }
+
+        // 輸出已穩定，正式消費（標記 bridgeExecuted 並取回目標）
+        lastSeenToolText = '';
+        stableToolCount = 0;
+        const target = getNextToolCall(false);
+        if (!target) return;
         isExecuting = true;
 
         if (target.syntaxError) {

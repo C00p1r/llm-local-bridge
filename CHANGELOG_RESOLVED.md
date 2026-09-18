@@ -1,5 +1,11 @@
 # Changelog & Release Notes
 
+## v4.13.1 (2026-09-18)
+- **Fix Premature Tool Execution on DeepSeek (`tampermonkey_script.js`)**: 修復 DeepSeek 上模型尚未輸出完成 tool_call 即被提早執行的問題。新增「輸出穩定度檢測」機制，tool_call 文字需連續兩輪輪詢維持不變（`STABLE_THRESHOLD`）才視為輸出完成。
+- **Peek-then-Consume Parsing**: 重構 `getNextToolCall(peek)` 支援窺視模式；偵測階段不再立即標記 `bridgeExecuted`，待輸出穩定後才正式消費，避免半成品或暫時無法解析的片段被提前執行或誤報語法錯誤。
+- **Strengthen DeepSeek Streaming Detection**: 擴充 `isStreaming()` 的 DeepSeek 停止按鈕選擇器（涵蓋繁簡中英文、icon button、`stop-button`、`data-testid`），並新增生成中樣式容器備援判斷，降低生成中被誤判為完成的機率。
+- **Increase Post-Result Cooldown**: 送出 `[TOOL_RESULT]` 後的輪詢冷卻由 1800ms 提高至 2500ms（`RESULT_COOLDOWN_MS`），避免 DeepSeek 回應較慢時搶先解析殘留內容所導致的「回應太快」問題。
+
 ## v4.13.0 (2026-09-18)
 - **DeepSeek Web Platform Support (`tampermonkey_script.js`)**: 新增 `@match https://chat.deepseek.com/*` 支援，將 DeepSeek 網頁版納入橋接範圍，與 ChatGPT、Google Gemini 並列為三大支援平台。
 - **Multi-Platform Adapter Layer**: 重構前端平台偵測與 DOM 適配層，加入 `deepseek` 平台分支，實作其專屬的輸入框定位 (`#chat-input` / `textarea[placeholder]`)、送出按鈕鎖定與模型回覆容器選取邏輯，並對應停止按鈕結構偵測。
