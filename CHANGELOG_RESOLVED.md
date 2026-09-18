@@ -1,5 +1,10 @@
 # Changelog & Release Notes
 
+## v4.13.0 (2026-09-18)
+- **DeepSeek Web Platform Support (`tampermonkey_script.js`)**: 新增 `@match https://chat.deepseek.com/*` 支援，將 DeepSeek 網頁版納入橋接範圍，與 ChatGPT、Google Gemini 並列為三大支援平台。
+- **Multi-Platform Adapter Layer**: 重構前端平台偵測與 DOM 適配層，加入 `deepseek` 平台分支，實作其專屬的輸入框定位 (`#chat-input` / `textarea[placeholder]`)、送出按鈕鎖定與模型回覆容器選取邏輯，並對應停止按鈕結構偵測。
+- **Multi-Web Prompt Injection & Tool Execution**: 統一 ChatGPT / Gemini / DeepSeek 三平台的對話攔截、強制工具呼叫前綴注入 (`[TOOL CALL REQUIRE]`) 與 `[TOOL_RESULT]` 回填流程。
+
 ## v4.12.2 (2026-09-13)
 - **Exclude Tool Results from Forced Prefix (`tampermonkey_script.js`)**: 在 `handleUserSend` 過濾 `[TOOL_RESULT]` 訊息，避免自動回填執行結果觸發點擊或輸入時被誤加 `[TOOL CALL REQUIRE]`，消除不必要的重複解析並恢復正常的生成速度。
 

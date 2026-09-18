@@ -1,13 +1,13 @@
 # LLM Local Bridge
 
-一個讓網頁版 AI（ChatGPT、Google Gemini 等）具備本機工作區操作能力的橋接工具。透過瀏覽器使用者腳本（Tampermonkey）監聽 LLM 輸出的工具呼叫格式，並經由本機 FastAPI 伺服器在安全沙盒（Docker 斷網環境）中執行指令或寫入檔案，並由主機代管 Git 遠端同步，實現全自動本機開發與 GitHub 協同迴圈。
+一個讓網頁版 AI（ChatGPT、Google Gemini、DeepSeek 等）具備本機工作區操作能力的橋接工具。透過瀏覽器使用者腳本（Tampermonkey）監聽 LLM 輸出的工具呼叫格式，並經由本機 FastAPI 伺服器在安全沙盒（Docker 斷網環境）中執行指令或寫入檔案，並由主機代管 Git 遠端同步，實現全自動本機開發與 GitHub 協同迴圈。
 
 ---
 
 ## 系統架構
 
 ```
-[ Web LLM (ChatGPT / Gemini) ]
+[ Web LLM (ChatGPT / Gemini / DeepSeek) ]
               │  (解析 tool_call 區塊: 單一物件 or 批次陣列)
               ▼
 [ Tampermonkey Script (Browser) ]
@@ -30,7 +30,7 @@
 * `memory_manager.py`：專案快照與記憶體管理，動態維護工作區目錄結構與環境狀態。
 * `config.py`：環境與安全設定（工作區路徑、逾時時間、字數限制、Token 生成）。
 * `launcher.py`：一鍵啟動腳本，自動檢查 Docker 與環境依賴。
-* `tampermonkey_script.js`：瀏覽器使用者腳本 (v4.12.0)，負責攔截對話、強制工具呼叫切換 (`⚡ ToolCall: ON/OFF`)、解析單一/批次 Tool Call、回填 `[TOOL_RESULT]` 並顯示即時調用成功率 (Badge %)。
+* `tampermonkey_script.js`：瀏覽器使用者腳本 (v4.13.0)，支援 ChatGPT、Google Gemini、DeepSeek 三大網頁版 LLM 平台，負責攔截對話、強制工具呼叫切換 (`⚡ ToolCall: ON/OFF`)、解析單一/批次 Tool Call、回填 `[TOOL_RESULT]` 並顯示即時調用成功率 (Badge %)。
 * `requirements.txt`：Python 後端依賴套件清單。
 
 ---
