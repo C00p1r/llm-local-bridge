@@ -62,7 +62,7 @@ async def health_check():
         "docker": docker_status
     }
 
-@app.get("/context")
+@app.get("/context_prompt")
 async def get_context(token: str = Depends(verify_token)):
     snapshot = memory_manager.capture_snapshot()
     prompt_text = memory_manager.get_latest_context_prompt()

@@ -1,11 +1,12 @@
 // ==UserScript==
-// @name         LLM Local Bridge Agent (v4.12.2 - Filter Tool Results from Forced Mode)
+// @name         LLM Local Bridge Agent (v4.13.0 - DeepSeek, ChatGPT & Gemini Multi-Web Support)
 // @namespace    https://local.bridge/
-// @version      4.12.2
-// @description  LLM Local Bridge with codebase search, symbol navigation, safe git tools, batch execution, and forced tool call toggle
+// @version      4.13.0
+// @description  LLM Local Bridge supporting ChatGPT, Gemini, and DeepSeek Web with low-latency prompt input and robust tool execution
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
 // @match        https://gemini.google.com/*
+// @match        https://chat.deepseek.com/*
 // @noframes
 // @grant        GM_setValue
 // @grant        GM_getValue
@@ -23,15 +24,14 @@
         return;
     }
 
-    if (document.documentElement.dataset.llmBridgeLoaded === 'true' || window.__llm_local_bridge_loaded__) {
+    if (window.__llm_local_bridge_loaded__) {
         console.log('[LLM Local Bridge] 檢測到已加載實例，略過本次重複執行。');
         return;
     }
-    document.documentElement.dataset.llmBridgeLoaded = 'true';
     window.__llm_local_bridge_loaded__ = true;
 
     console.log(
-        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.12.2 (Filter Tool Results from Forced Mode)',
+        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.13.0 (Multi-Platform: ChatGPT / Gemini / DeepSeek)',
         'color:#22c55e;font-weight:bold;font-size:14px;'
     );
 
@@ -50,8 +50,8 @@
      "tool": "file_replace",
      "parameters": {
        "path": "server.py",
-       "target": "def old_func():\n    pass",
-       "replacement": "def new_func():\n    return True"
+       "target": "def old_func():\\n    pass",
+       "replacement": "def new_func():\\n    return True"
      }
    }
 
@@ -103,7 +103,7 @@
    範例:
    {
      "tool": "run_script",
-     "parameters": {"code": "import sys\nprint(sys.version)", "language": "python"}
+     "parameters": {"code": "import sys\\nprint(sys.version)", "language": "python"}
    }
 
 6. execute_command: 執行短指令或檢查指令（嚴禁直接執行 git 指令，請使用專屬 git 工具）。
@@ -143,7 +143,7 @@
 - 修改現有檔案時一律優先使用 file_replace (或 patch_and_test)。
 - 僅在建立全新檔案時使用 file_write。
 - 若需使用進階工具的詳細參數，請先呼叫 \`list_tool(category="...")\` 查詢。
-- **高效連續批次呼叫（重要）**：為提升工作效率，單次對話輸出應盡可能將相互關聯的步驟打包為批次陣列（平均單次執行指令數應大於 2）。例如：將「讀取確認 -> 局部替換 -> 執行測試」或「目錄檢查 -> 檔案讀取 -> Git 狀態確認」一次性放在同一個批次中派發（支援 Fail-Fast 機制，出錯會自動中止）。避免單一回合僅執行單一無副作用查詢。
+- **高效連續批次呼叫（重要）**：單次對話輸出應盡可能將相互關聯的步驟打包為批次陣列（平均單次執行指令數應大於 2）。
 - 操作環境時，僅輸出 \`\`\`tool_call 區塊，等待系統回傳 [TOOL_RESULT] 後再接續分析。
 
 ### 四、 批次呼叫 (Batch Array) 格式
@@ -166,7 +166,6 @@
 - 若缺乏足夠環境資訊，請立即以批次方式調用 list_dir、search_codebase 或 file_read 進行探索。
 `;
 
-
     let sessionToken = GM_getValue('session_token', '');
     let isForceToolCall = GM_getValue('llm_force_tool_call', false);
     const TOOL_CALL_PREFIX = '[TOOL CALL REQUIRE] ';
@@ -176,7 +175,14 @@
     let isPromptingToken = false;
     let lastPromptDismissTime = 0;
     let lastExecutionTime = 0;
-    let detactInterval = 2000;
+    let detactInterval = 1500;
+
+    function getPlatform() {
+        const host = location.hostname;
+        if (host.includes('deepseek')) return 'deepseek';
+        if (host.includes('chatgpt') || host.includes('openai')) return 'chatgpt';
+        return 'gemini';
+    }
 
     function getMetrics() {
         return GM_getValue('tool_call_metrics', { total: 0, success: 0, failed: 0 });
@@ -195,26 +201,46 @@
     }
 
     function createMetricsUI() {
-        if (document.getElementById('llm-bridge-metrics-badge')) return;
+        if (!document.body) return;
+        if (document.getElementById('llm-bridge-metrics-badge')) {
+            updateMetricsBadge();
+            return;
+        }
+
         const badge = document.createElement('div');
         badge.id = 'llm-bridge-metrics-badge';
-        badge.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:999999;background:#1e293b;color:#f8fafc;padding:6px 12px;border-radius:20px;font-family:sans-serif;font-size:12px;box-shadow:0 4px 12px rgba(0,0,0,0.25);border:1px solid #334155;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;';
+        badge.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:2147483647;background:#1e293b;color:#f8fafc;padding:6px 12px;border-radius:20px;font-family:sans-serif;font-size:12px;box-shadow:0 4px 12px rgba(0,0,0,0.25);border:1px solid #334155;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;';
         badge.title = '點擊重設指標或更新 Token';
-        badge.innerHTML = `<span style="width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block;"></span><span id="llm-bridge-metrics-text">Bridge Ready</span><button id="llm-bridge-force-toggle" type="button" style="margin-left:6px;padding:2px 8px;font-size:11px;font-weight:bold;border-radius:10px;border:none;cursor:pointer;outline:none;"></button>`;
-        const toggleBtn = badge.querySelector('#llm-bridge-force-toggle');
+
+        const dot = document.createElement('span');
+        dot.style.cssText = 'width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block;';
+
+        const textEl = document.createElement('span');
+        textEl.id = 'llm-bridge-metrics-text';
+        textEl.textContent = 'Bridge Ready';
+
+        const toggleBtn = document.createElement('button');
+        toggleBtn.id = 'llm-bridge-force-toggle';
+        toggleBtn.type = 'button';
+        toggleBtn.style.cssText = 'margin-left:6px;padding:2px 8px;font-size:11px;font-weight:bold;border-radius:10px;border:none;cursor:pointer;outline:none;color:#ffffff;';
+
+        badge.appendChild(dot);
+        badge.appendChild(textEl);
+        badge.appendChild(toggleBtn);
+
         function updateToggleBtn() {
-            if (!toggleBtn) return;
             toggleBtn.textContent = isForceToolCall ? '⚡ ToolCall: ON' : '⚡ ToolCall: OFF';
             toggleBtn.style.background = isForceToolCall ? '#10b981' : '#475569';
-            toggleBtn.style.color = '#ffffff';
         }
         updateToggleBtn();
+
         toggleBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             isForceToolCall = !isForceToolCall;
             GM_setValue('llm_force_tool_call', isForceToolCall);
             updateToggleBtn();
         });
+
         badge.addEventListener('click', () => {
             const choice = prompt('請選擇操作：\n1. 更新 Session Token\n2. 重設調用計數器\n輸入序號 (1 或 2)：', '1');
             if (choice === '1') {
@@ -230,16 +256,23 @@
                 alert('指標已重設');
             }
         });
+
         document.body.appendChild(badge);
         updateMetricsBadge();
     }
 
     function updateMetricsBadge() {
         const textEl = document.getElementById('llm-bridge-metrics-text');
+        const toggleBtn = document.getElementById('llm-bridge-force-toggle');
         if (!textEl) return;
         const m = getMetrics();
         const accuracy = m.total > 0 ? ((m.success / m.total) * 100).toFixed(1) : '100.0';
         textEl.textContent = `Bridge: ${m.success}/${m.total} (${accuracy}%)`;
+
+        if (toggleBtn) {
+            toggleBtn.textContent = isForceToolCall ? '⚡ ToolCall: ON' : '⚡ ToolCall: OFF';
+            toggleBtn.style.background = isForceToolCall ? '#10b981' : '#475569';
+        }
     }
 
     function promptForToken() {
@@ -320,7 +353,7 @@
                 headers: {
                     'Authorization': `Bearer ${sessionToken}`
                 },
-                timeout: 5000,
+                timeout: 3000,
                 onload: function (res) {
                     if (res.status === 200) {
                         try {
@@ -340,21 +373,76 @@
         });
     }
 
+    // 跨平台串流產生狀態檢測
     function isStreaming() {
-        const isChatGPT = location.hostname.includes('chatgpt') || location.hostname.includes('openai');
-        if (isChatGPT) {
+        const platform = getPlatform();
+        if (platform === 'chatgpt') {
             return Boolean(document.querySelector('button[data-testid="stop-button"], .result-streaming'));
         }
-        return Boolean(document.querySelector('button[aria-label*="Stop"], button[aria-label*="停止"], .sparkle-animating, mat-progress-bar'));
+        if (platform === 'deepseek') {
+            // DeepSeek 停止按鈕常見結構
+            const dsStop = document.querySelector('.ds-icon-button[aria-label*="Stop"], .ds-icon-button[aria-label*="停止"], button[aria-label*="Stop"], div[role="button"][aria-label*="Stop"]');
+            return Boolean(dsStop && dsStop.offsetParent !== null);
+        }
+        // Gemini
+        const geminiStop = document.querySelector('button[aria-label*="Stop"], button[aria-label*="停止"]');
+        return Boolean(geminiStop && geminiStop.offsetParent !== null && !geminiStop.disabled);
     }
 
-    async function submitToLLM(text) {
-        const isChatGPT = location.hostname.includes('chatgpt') || location.hostname.includes('openai');
-        const inputEl = isChatGPT
-            ? document.querySelector('#prompt-textarea')
-            : document.querySelector('.ql-editor, div[contenteditable="true"], textarea');
+    // 跨平台取得輸入框元素
+    function getInputElement() {
+        const platform = getPlatform();
+        if (platform === 'chatgpt') {
+            return document.querySelector('#prompt-textarea');
+        }
+        if (platform === 'deepseek') {
+            return document.querySelector('#chat-input, textarea[placeholder*="DeepSeek"], textarea[placeholder*="输入"], textarea');
+        }
+        // Gemini
+        return document.querySelector('.ql-editor, div[contenteditable="true"], textarea');
+    }
 
+    // 跨平台取得送出按鈕
+    function getSendButton() {
+        const platform = getPlatform();
+        const inputEl = getInputElement();
+
+        if (platform === 'chatgpt') {
+            return document.querySelector('button[data-testid="send-button"], button[aria-label="Send prompt"]');
+        }
+
+        if (platform === 'deepseek') {
+            // 先以 DeepSeek 送出按鈕常見的專屬 ID 與 Class 鎖定
+            const directBtn = document.querySelector('#chat-input-send-button, .ds-send-button, [aria-label="发送"], [aria-label="Send"]');
+            if (directBtn) return directBtn;
+
+            // 若無明確標記，僅在輸入框相鄰的工具列容器內尋找，絕不全域抓取避免命中側邊欄搜尋
+            if (inputEl) {
+                const container = inputEl.closest('form, div[class*="input"], div[class*="footer"], div[class*="bottom"]');
+                if (container) {
+                    const candidates = Array.from(container.querySelectorAll('div[role="button"], button'));
+                    // 排除任何帶有 search、clear、history 的按鈕
+                    const validBtn = candidates.find(btn => {
+                        const label = (btn.getAttribute('aria-label') || btn.title || '').toLowerCase();
+                        return !label.includes('search') && !label.includes('搜索') && !label.includes('clear');
+                    });
+                    if (validBtn) return validBtn;
+                }
+            }
+            return document.querySelector('div[role="button"]:has(svg):not([aria-label*="search"]):not([aria-label*="搜索"])');
+        }
+
+        // Gemini
+        return document.querySelector('button.send-button, button[aria-label*="Send"], button[aria-label*="傳送"]');
+    }
+
+    // 低延遲高相容送出機制 (包含 DataTransfer 快速貼上)
+    async function submitToLLM(text) {
+        const inputEl = getInputElement();
         if (!inputEl) return false;
+
+        // 確保輸入框處於聚焦狀態
+        inputEl.focus();
 
         if (inputEl.tagName && inputEl.tagName.toLowerCase() === 'textarea') {
             const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
@@ -364,23 +452,49 @@
                 inputEl.value = text;
             }
         } else {
-            inputEl.focus();
-            document.execCommand('selectAll', false, null);
-            document.execCommand('insertText', false, text);
+            inputEl.textContent = '';
+            try {
+                const dt = new DataTransfer();
+                dt.setData('text/plain', text);
+                const pasteEvent = new ClipboardEvent('paste', {
+                    clipboardData: dt,
+                    bubbles: true,
+                    cancelable: true
+                });
+                inputEl.dispatchEvent(pasteEvent);
+            } catch (e) {
+                document.execCommand('selectAll', false, null);
+                document.execCommand('insertText', false, text);
+            }
         }
 
+        // 觸發框架的雙向綁定更新
         inputEl.dispatchEvent(new Event('input', { bubbles: true }));
-        await new Promise((r) => setTimeout(r, 500));
+        inputEl.dispatchEvent(new Event('change', { bubbles: true }));
+        await new Promise((r) => setTimeout(r, 250));
 
-        const btn = isChatGPT
-            ? document.querySelector('button[data-testid="send-button"], button[aria-label="Send prompt"]')
-            : document.querySelector('button.send-button, button[aria-label*="Send"], button[aria-label*="傳送"]');
+        // 優先點擊專屬發送按鈕
+        const btn = getSendButton();
+        const isBtnClickable = btn && !btn.disabled && btn.getAttribute('aria-disabled') !== 'true';
 
-        if (!btn || btn.disabled) return false;
+        if (isBtnClickable) {
+            btn.click();
+            console.log('[Bridge] 透過按鈕點擊送出訊息');
+        } else {
+            // 按鈕未就緒或未找到時，直接在輸入框觸發 Enter 送出，避免焦點飄到搜尋列
+            const enterDown = new KeyboardEvent('keydown', {
+                key: 'Enter',
+                code: 'Enter',
+                keyCode: 13,
+                which: 13,
+                bubbles: true,
+                cancelable: true
+            });
+            inputEl.dispatchEvent(enterDown);
+            console.log('[Bridge] 透過輸入框 Enter 模擬送出訊息');
+        }
 
-        btn.click();
-        console.log('[Bridge] 送出訊息');
-        await new Promise((r) => setTimeout(r, 1500));
+        await new Promise((r) => setTimeout(r, 1200));
         return true;
     }
 
@@ -403,18 +517,25 @@
             }
         }
 
+        let cleanText = rawText.trim();
+        cleanText = cleanText.replace(/^```[a-zA-Z0-9_-]*\s*/i, '').replace(/```$/i, '').trim();
+
+        if (cleanText.startsWith('"') && cleanText.endsWith('"')) {
+            cleanText = cleanText.slice(1, -1).trim();
+        }
+
         try {
-            const parsed = JSON.parse(rawText.trim());
+            const parsed = JSON.parse(cleanText);
             if (isValidToolPayload(parsed)) return parsed;
         } catch (e) {}
 
-        const firstBracket = rawText.indexOf('[');
-        const lastBracket = rawText.lastIndexOf(']');
-        const firstBrace = rawText.indexOf('{');
-        const lastBrace = rawText.lastIndexOf('}');
+        const firstBracket = cleanText.indexOf('[');
+        const lastBracket = cleanText.lastIndexOf(']');
+        const firstBrace = cleanText.indexOf('{');
+        const lastBrace = cleanText.lastIndexOf('}');
 
         if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
-            const candidateArr = rawText.substring(firstBracket, lastBracket + 1);
+            const candidateArr = cleanText.substring(firstBracket, lastBracket + 1);
             try {
                 const parsedArr = JSON.parse(candidateArr);
                 if (isValidToolPayload(parsedArr)) return parsedArr;
@@ -422,7 +543,7 @@
         }
 
         if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-            const candidateObj = rawText.substring(firstBrace, lastBrace + 1);
+            const candidateObj = cleanText.substring(firstBrace, lastBrace + 1);
             try {
                 const parsedObj = JSON.parse(candidateObj);
                 if (isValidToolPayload(parsedObj)) return parsedObj;
@@ -448,30 +569,48 @@
         return Boolean(payload.tool && typeof payload.tool === 'string');
     }
 
+    // 跨平台提取最新助手訊息節點
     function getNextToolCall() {
-        const isChatGPT = location.hostname.includes('chatgpt') || location.hostname.includes('openai');
+        const platform = getPlatform();
         let assistantMessages = [];
-        if (isChatGPT) {
-            assistantMessages = document.querySelectorAll('div[data-message-author-role="assistant"]');
+
+        if (platform === 'chatgpt') {
+            assistantMessages = Array.from(document.querySelectorAll('div[data-message-author-role="assistant"]'));
+        } else if (platform === 'deepseek') {
+            // 排除含有使用者標記的容器，選取 DeepSeek 模型回覆
+            const dsBlocks = Array.from(document.querySelectorAll('.ds-message, .ds-markdown'));
+            assistantMessages = dsBlocks.filter(el => !el.closest('.ds-message--user, [data-is-user="true"]') && el.offsetParent !== null);
         } else {
-            const allModels = document.querySelectorAll('model-response, .model-response-text');
-            assistantMessages = allModels.length ? allModels : document.querySelectorAll('message-content');
+            // Gemini
+            const geminiBlocks = Array.from(document.querySelectorAll('message-content, model-response'));
+            assistantMessages = geminiBlocks.filter(el => {
+                const isUser = el.closest('.user-query, .user-query-container, [data-message-author-role="user"]');
+                return !isUser && el.offsetParent !== null;
+            });
         }
 
         if (!assistantMessages.length) return null;
+
+        // 鎖定最後一個助手訊息
         const latestMsg = assistantMessages[assistantMessages.length - 1];
 
-        if (latestMsg.closest('.user-query, [data-message-author-role="user"]')) {
+        if (latestMsg.closest('.user-query, [data-message-author-role="user"], .ds-message--user')) {
             return null;
         }
 
-        const codeBlocks = latestMsg.querySelectorAll('pre code, pre');
+        // 選取代碼區塊
+        const codeBlocks = latestMsg.querySelectorAll('code[data-test-id="code-content"], pre code, pre');
 
         for (const el of codeBlocks) {
             if (el.dataset.bridgeExecuted === 'true') continue;
 
-            const text = (el.innerText || el.textContent || '').trim();
+            let text = (el.innerText || el.textContent || '').trim();
             if (!text.includes('"tool"')) continue;
+
+            if (/^(function|const|let|var|import|\/\/|\/\*)/.test(text) || text.includes('GM_xmlhttpRequest')) {
+                el.dataset.bridgeExecuted = 'true';
+                continue;
+            }
 
             const parsed = parseMultiLineJson(text);
             if (parsed) {
@@ -480,14 +619,15 @@
                 console.log('%c[Bridge] ✓ 成功解析 Tool Call', 'color:#38bdf8;font-weight:bold;', logName, parsed);
                 return { parsed, element: el };
             } else {
-                // 偵測到意圖呼叫 tool 但 JSON 語法損壞，觸發即時語法反饋
                 el.dataset.bridgeExecuted = 'true';
-                console.warn('[Bridge] ⚠️ 偵測到損壞的 Tool Call JSON 語法');
-                return {
-                    syntaxError: true,
-                    element: el,
-                    rawSnippet: text.length > 300 ? text.substring(0, 300) + '...' : text
-                };
+                if (text.startsWith('[') || text.startsWith('{') || text.includes('tool_call')) {
+                    console.warn('[Bridge] ⚠️ 偵測到損壞的 Tool Call JSON 語法');
+                    return {
+                        syntaxError: true,
+                        element: el,
+                        rawSnippet: text.length > 300 ? text.substring(0, 300) + '...' : text
+                    };
+                }
             }
         }
         return null;
@@ -541,11 +681,7 @@
     }, detactInterval);
 
     async function handleUserSend(e) {
-        const isChatGPT = location.hostname.includes('chatgpt') || location.hostname.includes('openai');
-        const inputEl = isChatGPT
-            ? document.querySelector('#prompt-textarea')
-            : document.querySelector('.ql-editor, div[contenteditable="true"], textarea');
-
+        const inputEl = getInputElement();
         if (!inputEl) return;
 
         const rawVal = inputEl.innerText || inputEl.value || '';
@@ -564,7 +700,7 @@
             console.log('[Bridge] 首次對話：正在取得工作區快照並注入 Prompt...');
 
             const memoryContext = await fetchContextPrompt();
-            const fullPrompt = `${BASE_SYSTEM_PROMPT}\n${memoryContext}\n---\n使用者的輸入如下：\n${textWithPrefix}`;
+            const fullPrompt = `${BASE_SYSTEM_PROMPT}\n${memoryContext}\n---\\n使用者的輸入如下：\n${textWithPrefix}`;
 
             await submitToLLM(fullPrompt);
         } else if (needsPrefix) {
@@ -590,8 +726,8 @@
     document.addEventListener(
         'click',
         async (e) => {
-            const target = e.target.closest('button[data-testid="send-button"], button[aria-label="Send prompt"], button.send-button, button[aria-label*="Send"], button[aria-label*="傳送"]');
-            if (target) {
+            const sendBtn = getSendButton();
+            if (sendBtn && (e.target === sendBtn || sendBtn.contains(e.target))) {
                 await handleUserSend(e);
             }
         },
