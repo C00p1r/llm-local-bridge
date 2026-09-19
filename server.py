@@ -7,6 +7,10 @@ from typing import Optional, Dict, Any, List, Union
 import executor
 import github_client
 import memory_manager
+try:
+    import pyautogui
+except ImportError:
+    pyautogui = None
 from config import SESSION_TOKEN, ALLOWED_ORIGINS
 from github_client import git_clone, git_fetch, git_pull
 from tools import TOOL_CATALOG, SUPPORTED_TOOLS, TOOL_HANDLERS, validate_tool_parameters
@@ -174,6 +178,21 @@ class GitSyncRequest(BaseModel):
     remote: str = "origin"
     branch: str = "main"
     force_reset: bool = False
+
+@app.post("/simulate_send")
+async def simulate_send(authorized: bool = Depends(verify_token)):
+    """透過作業系統級輸入模擬按下 Enter，確保事件具備 isTrusted: true 與物理硬體特徵"""
+    import asyncio
+    import random
+    if pyautogui is None:
+        return {"status": "error", "message": "pyautogui 未安裝，請先執行 pip install pyautogui"}
+    try:
+        # 隨機物理延遲 150ms ~ 350ms
+        await asyncio.sleep(random.uniform(0.15, 0.35))
+        pyautogui.press('enter')
+        return {"status": "success", "message": "系統級 Enter 鍵已成功送出"}
+    except Exception as e:
+        return {"status": "error", "message": f"pyautogui 執行失敗: {str(e)}"}
 
 @app.post("/git/clone")
 async def handle_git_clone(req: GitCloneRequest, authorized: bool = Depends(verify_token)):

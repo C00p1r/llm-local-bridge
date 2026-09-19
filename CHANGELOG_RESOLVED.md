@@ -1,5 +1,13 @@
 # Changelog & Release Notes
 
+## v4.14.0 (2026-09-19)
+- **DeepSeek OS-Level Send Bypass (`/simulate_send`, `server.py`, `tampermonkey_script.js`)**: 在後端 `server.py` 新增 `/simulate_send` 端點，透過 `pyautogui` 派發具備物理延遲（150ms~350ms）的 OS 實體 Enter 事件，徹底繞過前端 WAF 對合成非受信任事件（`isTrusted: false`）的送出攔截限制。
+- **Zero-Race DOM Lock & In-Place Consumption (`tampermonkey_script.js`)**: 徹底消除 `peekTarget` 探測與正式消費之間兩度掃描 DOM 導致的節點競爭；一旦文字連續穩定（`STABLE_THRESHOLD`），原地標記 `markExecuted` 並直接消費，避免長對話或 DOM 重繪導致的 Tool Call 遺漏。
+- **History Lock on Launch (`lockExistingHistory`)**: 網頁初次載入或刷新後自動封鎖畫面上所有歷史代碼塊（`dataset.bridgeExecuted = 'true'`），根除對話恢復時誤讀歷史 Tool Call 並自行偷跑的幽靈執行問題。
+- **Gemini Precise Element Targeting (`code[data-test-id="code-content"]`)**: 鎖定 Gemini 專屬代碼節點，同時雙向標記父級 `<code-block>` 與 `<pre>`，避免巢狀重複選取與換行字元解析混淆。
+- **Streaming State Fix on DeepSeek**: 修復 `isStreaming()` 誤鎖定最舊 Markdown 容器的 Bug，改為動態取最新元素以防偵測循環死鎖。
+- **Dynamic Jittered Polling**: 將前端偵測排程升級為隨機抖動間隔（-200ms ~ +400ms），打破固定週期機器人行為指紋特徵。
+
 ## v4.13.4 (2026-09-18)
 - **Fix `set: pipefail: invalid option name` (`sandbox/build.sh`)**: 修正建置腳本因 CRLF 行尾導致 shebang 失效（被 `sh`/dash 執行），進而觸發 `set -o pipefail` 不支援的錯誤。改寫為 POSIX 相容（`#!/bin/sh` + `set -eu`），並以條件式啟用 pipefail（bash 才生效、dash 自動略過）。
 - **Normalize Sandbox Files to LF**: 將 `sandbox/` 下所有檔案（Dockerfile、build.sh、requirements）正規化為 LF，避免 Dockerfile `RUN` 行接續的反斜線被 `\r` 破壞。
