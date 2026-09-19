@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         LLM Local Bridge Agent (v4.13.2 - DeepSeek Send-Button Fix)
+// @name         LLM Local Bridge Agent (v4.13.3 - Gemini TrustedHTML Fix)
 // @namespace    https://local.bridge/
-// @version      4.13.2
+// @version      4.13.3
 // @description  LLM Local Bridge supporting ChatGPT, Gemini, and DeepSeek Web with low-latency prompt input and robust tool execution
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
@@ -411,7 +411,7 @@
             return document.querySelector('#chat-input, textarea[placeholder*="DeepSeek"], textarea[placeholder*="输入"], textarea');
         }
         // Gemini
-        return document.querySelector('.ql-editor, div[contenteditable="true"], textarea');
+        return document.querySelector('rich-textarea .ql-editor, rich-textarea div[contenteditable="true"], .ql-editor, div[contenteditable="true"]');
     }
 
     // 跨平台取得送出按鈕
@@ -451,15 +451,22 @@
         }
 
         // Gemini
-        return document.querySelector('button.send-button, button[aria-label*="Send"], button[aria-label*="傳送"]');
+        return document.querySelector(
+            'button[aria-label*="傳送"], button[aria-label*="發送"], button[aria-label*="Send"], ' +
+            '.send-button-container button, button.send-button, ' +
+            'rich-textarea ~ * button[aria-label*="提示"], ' +
+            'button:has(mat-icon[fonticon*="send"]), button:has(span[data-icon="send"])'
+        );
     }
 
-    // 低延遲高相容送出機制 (包含 DataTransfer 快速貼上)
+    // 跨平台相容送出機制 (針對 Gemini TrustedHTML 與 RichText 深度適配)
     async function submitToLLM(text) {
         const inputEl = getInputElement();
-        if (!inputEl) return false;
+        if (!inputEl) {
+            console.error('[Bridge] 找不到輸入框元素');
+            return false;
+        }
 
-        // 確保輸入框處於聚焦狀態
         inputEl.focus();
 
         if (inputEl.tagName && inputEl.tagName.toLowerCase() === 'textarea') {
@@ -470,64 +477,82 @@
                 inputEl.value = text;
             }
         } else {
-            inputEl.textContent = '';
-            try {
-                const dt = new DataTransfer();
-                dt.setData('text/plain', text);
-                const pasteEvent = new ClipboardEvent('paste', {
-                    clipboardData: dt,
-                    bubbles: true,
-                    cancelable: true
-                });
-                inputEl.dispatchEvent(pasteEvent);
-            } catch (e) {
-                document.execCommand('selectAll', false, null);
-                document.execCommand('insertText', false, text);
+            // 純 DOM 逐行構建 <p> 結構，徹底繞過 Trusted Types 安全策略限制
+            const lines = text.split('\n');
+            const pElements = [];
+
+            for (const line of lines) {
+                const p = document.createElement('p');
+                if (line.length === 0) {
+                    p.appendChild(document.createElement('br'));
+                } else {
+                    p.textContent = line;
+                }
+                pElements.push(p);
             }
+
+            while (inputEl.firstChild) {
+                inputEl.removeChild(inputEl.firstChild);
+            }
+            for (const p of pElements) {
+                inputEl.appendChild(p);
+            }
+
+            const selection = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(inputEl);
+            range.collapse(false);
+            selection.removeAllRanges();
+            selection.addRange(range);
         }
 
-        // 觸發框架的雙向綁定更新
-        inputEl.dispatchEvent(new Event('input', { bubbles: true }));
-        inputEl.dispatchEvent(new Event('change', { bubbles: true }));
-        await new Promise((r) => setTimeout(r, 250));
+        inputEl.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+        inputEl.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+        inputEl.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, composed: true, inputType: 'insertText' }));
+        inputEl.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, composed: true, key: 'End' }));
 
-        // 優先點擊專屬發送按鈕：加入重試，等待框架啟用送出鍵（DeepSeek 輸入後按鈕可能延遲就緒）
         let btn = null;
-        for (let attempt = 0; attempt < 6; attempt++) {
+        for (let attempt = 0; attempt < 25; attempt++) {
             const candidate = getSendButton();
             const clickable = candidate && !candidate.disabled && candidate.getAttribute('aria-disabled') !== 'true';
             if (clickable) {
                 btn = candidate;
                 break;
             }
-            await new Promise((r) => setTimeout(r, 120));
+            await new Promise((r) => setTimeout(r, 100));
         }
 
         isProgrammaticSubmit = true;
         try {
             if (btn) {
                 btn.click();
-                console.log('[Bridge] 透過按鈕點擊送出訊息');
+                console.log('[Bridge] ✓ 送出按鈕已就緒，執行點擊');
             } else {
-                // 找不到可點擊按鈕時，以完整鍵盤事件序列在輸入框送出（避免焦點飄到側邊欄）
-                inputEl.focus();
-                const mkKey = (type) => new KeyboardEvent(type, {
-                    key: 'Enter',
-                    code: 'Enter',
-                    keyCode: 13,
-                    which: 13,
-                    bubbles: true,
-                    cancelable: true,
-                    composed: true
-                });
-                inputEl.dispatchEvent(mkKey('keydown'));
-                inputEl.dispatchEvent(mkKey('keypress'));
-                inputEl.dispatchEvent(mkKey('keyup'));
-                console.log('[Bridge] 透過輸入框 Enter 模擬送出訊息');
+                console.warn('[Bridge] ⚠️ 按鈕未解鎖，嘗試以點擊備援');
+                const fallbackBtn = getSendButton();
+                if (fallbackBtn) {
+                    fallbackBtn.removeAttribute('disabled');
+                    fallbackBtn.setAttribute('aria-disabled', 'false');
+                    fallbackBtn.click();
+                } else {
+                    inputEl.focus();
+                    const mkKey = (type) => new KeyboardEvent(type, {
+                        key: 'Enter',
+                        code: 'Enter',
+                        keyCode: 13,
+                        which: 13,
+                        bubbles: true,
+                        cancelable: true,
+                        composed: true
+                    });
+                    inputEl.dispatchEvent(mkKey('keydown'));
+                    inputEl.dispatchEvent(mkKey('keypress'));
+                    inputEl.dispatchEvent(mkKey('keyup'));
+                    console.log('[Bridge] 透過輸入框 Enter 模擬送出訊息');
+                }
             }
         } finally {
-            // 合成事件為同步派發，於下一輪事件迴圈前解除防護即可
-            setTimeout(() => { isProgrammaticSubmit = false; }, 0);
+            setTimeout(() => { isProgrammaticSubmit = false; }, 500);
         }
 
         await new Promise((r) => setTimeout(r, 1200));
