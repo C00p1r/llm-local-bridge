@@ -171,12 +171,18 @@
     let isPromptingToken = false;
     let lastPromptDismissTime = 0;
     let lastExecutionTime = 0;
-    let detactInterval = 1500;
+    let detactInterval = 750;
     const STABLE_THRESHOLD = 2;
-    const RESULT_COOLDOWN_MS = 2500;
+    const RESULT_COOLDOWN_MS = 1500;
     let lastSeenToolText = '';
     let stableToolCount = 0;
     let isProgrammaticSubmit = false;
+    const executedFingerprints = new Set();
+
+    function getCodeFingerprint(text) {
+        const clean = (text || '').replace(/\s+/g, '');
+        return `${clean.length}_${clean.substring(0, 150)}`;
+    }
 
     function getPlatform() {
         const host = location.hostname;
