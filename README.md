@@ -192,3 +192,4 @@ uvicorn server:app --host 127.0.0.1 --port 8000 --reload
 | **08** | **Git 結構相容** | `github_action` 參數巢狀層級過深 | LLM 容易遺漏或混淆外層 parameters 與內層 params 欄位結構 | 後端支援參數扁平化解析（Flat Payload 相容），直接讀取第一層 parameters |
 | **09** | **遠端同步** | GitHub Push 發生 non-fast-forward 或憑證衝突 | 本機工作區與遠端 Commit 樹分岔，或 subfolder 路徑對映錯誤 | 於 Host 端加入強制重設與自動 Git pull/rebase 策略，並在 subfolder 精確隔離專案檔案 |
 | **10** | **局部編輯** | 修改現有檔案全量覆寫易遺漏程式碼 | `write_file` 重寫數百行檔案易造成 Token 浪費與上下文截斷損毀 | 實作 `replace_content` 搭配嚴格唯一性（Strict Uniqueness）驗證與換行符正規化 |
+| **11** | **瀏覽器相容** | Edge 上腳本無法載入 (提示 "Extensions are not allowed on this site") | Microsoft Edge 預設將部分 AI 與受保護網域列入擴充功能封鎖名單，且強制阻擋公網 HTTPS 向本機私網（127.0.0.1）發送請求 | 建議改用 Brave 或 Chrome；若必須使用 Edge，需至擴充功能管理允許該站存取權限，並於 `edge://flags` 關閉私有網路存取封鎖 (PNA) |
