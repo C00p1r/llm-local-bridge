@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         LLM Local Bridge Agent (v4.13.3 - Clean & Gemini Fix)
+// @name         LLM Local Bridge Agent (v4.14.0 - Clean & Gemini Fix)
 // @namespace    https://local.bridge/
-// @version      4.13.3
+// @version      4.14.0
 // @description  LLM Local Bridge supporting ChatGPT, Gemini, and DeepSeek Web
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
@@ -27,7 +27,7 @@
     window.__llm_local_bridge_loaded__ = true;
 
     console.log(
-        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.13.3 (Multi-Platform: ChatGPT / Gemini / DeepSeek)',
+        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.14.0 (Multi-Platform: ChatGPT / Gemini / DeepSeek)',
         'color:#22c55e;font-weight:bold;font-size:14px;'
     );
 
@@ -171,18 +171,12 @@
     let isPromptingToken = false;
     let lastPromptDismissTime = 0;
     let lastExecutionTime = 0;
-    let detactInterval = 750;
+    let detactInterval = 1500;
     const STABLE_THRESHOLD = 2;
-    const RESULT_COOLDOWN_MS = 1500;
+    const RESULT_COOLDOWN_MS = 2500;
     let lastSeenToolText = '';
     let stableToolCount = 0;
     let isProgrammaticSubmit = false;
-    const executedFingerprints = new Set();
-
-    function getCodeFingerprint(text) {
-        const clean = (text || '').replace(/\s+/g, '');
-        return `${clean.length}_${clean.substring(0, 150)}`;
-    }
 
     function getPlatform() {
         const host = location.hostname;
@@ -528,11 +522,7 @@
     }
 
     function parseMultiLineJson(rawText) {
-        // 支援長文本專屬格式：```tool_call:file_write 或 ```tool_call:run_script 避免 JSON 跳脫損毀
-        const blockMatch = rawText.match(/```(?:tool_call|bridge):([a-zA-Z0-9_-]+)[^
-]*
-([\s\S]*?)
-```/);
+        const blockMatch = rawText.match(/```(?:tool_call|bridge):([a-zA-Z0-9_-]+)\s*\n([\s\S]*?)\n```/);
         if (blockMatch) {
             const action = blockMatch[1];
             const rawBody = blockMatch[2].trim();
@@ -540,8 +530,7 @@
                 return { tool: 'execute_command', parameters: { command: rawBody } };
             }
             if (action === 'file_write' || action === 'write_file') {
-                const firstNewline = rawBody.indexOf('
-');
+                const firstNewline = rawBody.indexOf('\n');
                 const path = rawBody.substring(0, firstNewline).replace(/^path:\s*/i, '').trim();
                 const content = rawBody.substring(firstNewline + 1);
                 return { tool: 'file_write', parameters: { path, content } };
@@ -558,42 +547,37 @@
             cleanText = cleanText.slice(1, -1).trim();
         }
 
-        // 1. 直式標準解析
         try {
             const parsed = JSON.parse(cleanText);
             if (isValidToolPayload(parsed)) return parsed;
         } catch (e) {}
 
-        // 2. 邊界擷取（陣列 [...] 或 物件 {...}）
         const firstBracket = cleanText.indexOf('[');
         const lastBracket = cleanText.lastIndexOf(']');
         const firstBrace = cleanText.indexOf('{');
         const lastBrace = cleanText.lastIndexOf('}');
 
-        let candidate = '';
         if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
-            candidate = cleanText.substring(firstBracket, lastBracket + 1);
-        } else if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-            candidate = cleanText.substring(firstBrace, lastBrace + 1);
+            const candidateArr = cleanText.substring(firstBracket, lastBracket + 1);
+            try {
+                const parsedArr = JSON.parse(candidateArr);
+                if (isValidToolPayload(parsedArr)) return parsedArr;
+            } catch (e) {}
         }
 
-        if (candidate) {
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+            const candidateObj = cleanText.substring(firstBrace, lastBrace + 1);
             try {
-                const parsed = JSON.parse(candidate);
-                if (isValidToolPayload(parsed)) return parsed;
+                const parsedObj = JSON.parse(candidateObj);
+                if (isValidToolPayload(parsedObj)) return parsedObj;
             } catch (e) {}
 
-            // 3. 深度長文本修復：修復字串內部未經轉義的實際換行、製表符，保留合法跳脫
             try {
-                const sanitized = candidate.replace(/"((?:[^"\]|\.)*)"/gs, (match, inner) => {
-                    const fixed = inner
-                        .replace(/?
-/g, '\n')
-                        .replace(/	/g, '\t');
-                    return `"${fixed}"`;
+                const sanitized = candidateObj.replace(/"(?:[^"\\]|\\.)*"/gs, (match) => {
+                    return match.replace(/\r/g, '\\r').replace(/\n/g, '\\n').replace(/\t/g, '\\t');
                 });
-                const parsed = JSON.parse(sanitized);
-                if (isValidToolPayload(parsed)) return parsed;
+                const parsedSanitized = JSON.parse(sanitized);
+                if (isValidToolPayload(parsedSanitized)) return parsedSanitized;
             } catch (e) {}
         }
 
