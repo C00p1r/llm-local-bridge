@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         LLM Local Bridge Agent (v4.13.3 - Gemini TrustedHTML Fix)
+// @name         LLM Local Bridge Agent (v4.13.3 - Clean & Gemini Fix)
 // @namespace    https://local.bridge/
 // @version      4.13.3
-// @description  LLM Local Bridge supporting ChatGPT, Gemini, and DeepSeek Web with low-latency prompt input and robust tool execution
+// @description  LLM Local Bridge supporting ChatGPT, Gemini, and DeepSeek Web
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
 // @match        https://gemini.google.com/*
@@ -20,10 +20,6 @@
 (function () {
     'use strict';
 
-    if (window.top !== window.self) {
-        return;
-    }
-
     if (window.__llm_local_bridge_loaded__) {
         console.log('[LLM Local Bridge] 檢測到已加載實例，略過本次重複執行。');
         return;
@@ -31,7 +27,7 @@
     window.__llm_local_bridge_loaded__ = true;
 
     console.log(
-        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.13.2 (Multi-Platform: ChatGPT / Gemini / DeepSeek)',
+        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.13.3 (Multi-Platform: ChatGPT / Gemini / DeepSeek)',
         'color:#22c55e;font-weight:bold;font-size:14px;'
     );
 
@@ -176,13 +172,10 @@
     let lastPromptDismissTime = 0;
     let lastExecutionTime = 0;
     let detactInterval = 1500;
-    // 輸出穩定度追蹤：確保模型完整輸出後才解析執行
     const STABLE_THRESHOLD = 2;
-    // 送出 [TOOL_RESULT] 後的回應冷卻，避免模型尚未開始生成就搶先解析（DeepSeek 尤需）
     const RESULT_COOLDOWN_MS = 2500;
     let lastSeenToolText = '';
     let stableToolCount = 0;
-    // 程式化送出防護：避免 submitToLLM 合成的 click / Enter 事件被全域監聽器再次攔截而遞迴觸發
     let isProgrammaticSubmit = false;
 
     function getPlatform() {
@@ -381,17 +374,14 @@
         });
     }
 
-    // 跨平台串流產生狀態檢測
     function isStreaming() {
         const platform = getPlatform();
         if (platform === 'chatgpt') {
             return Boolean(document.querySelector('button[data-testid="stop-button"], .result-streaming'));
         }
         if (platform === 'deepseek') {
-            // DeepSeek 停止按鈕常見結構（含繁簡中英文與各類 icon button 樣式）
             const dsStop = document.querySelector('.ds-icon-button[aria-label*="Stop"], .ds-icon-button[aria-label*="停止"], button[aria-label*="Stop"], button[aria-label*="停止"], button[aria-label*="停止生成"], div[role="button"][aria-label*="Stop"], div[role="button"][aria-label*="停止"], [class*="stop-button"], [data-testid*="stop"]');
             if (dsStop && dsStop.offsetParent !== null) return true;
-            // 備援：檢查最後一個助手訊息是否仍帶有生成中樣式
             const latestMsg = document.querySelector('.ds-markdown');
             if (latestMsg && latestMsg.closest('[class*="streaming"], [class*="generating"], [class*="loading"]')) return true;
             return false;
@@ -401,7 +391,6 @@
         return Boolean(geminiStop && geminiStop.offsetParent !== null && !geminiStop.disabled);
     }
 
-    // 跨平台取得輸入框元素
     function getInputElement() {
         const platform = getPlatform();
         if (platform === 'chatgpt') {
@@ -410,11 +399,10 @@
         if (platform === 'deepseek') {
             return document.querySelector('#chat-input, textarea[placeholder*="DeepSeek"], textarea[placeholder*="输入"], textarea');
         }
-        // Gemini
+        // Gemini: 深入 rich-textarea 內部的 contenteditable
         return document.querySelector('rich-textarea .ql-editor, rich-textarea div[contenteditable="true"], .ql-editor, div[contenteditable="true"]');
     }
 
-    // 跨平台取得送出按鈕
     function getSendButton() {
         const platform = getPlatform();
         const inputEl = getInputElement();
@@ -424,13 +412,10 @@
         }
 
         if (platform === 'deepseek') {
-            // 1. 明確的送出按鈕 ID / Class（同時排除側邊欄節點）
             const directBtn = document.querySelector('#chat-input-send-button, .ds-send-button');
             if (directBtn && !directBtn.closest('[class*="sidebar"], [class*="nav"], [class*="history"], [class*="conversation"]')) {
                 return directBtn;
             }
-
-            // 2. 以輸入框為錨點，僅在其鄰近容器中由後往前尋找送出按鈕（嚴禁全域抓取以免誤點側邊欄）
             if (inputEl) {
                 const container = inputEl.closest('form, div[class*="input"], div[class*="footer"], div[class*="bottom"]');
                 if (container) {
@@ -441,25 +426,22 @@
                         if (label.includes('search') || label.includes('搜索') || label.includes('clear') || label.includes('清除') || label.includes('attach') || label.includes('附件')) continue;
                         if (btn.disabled || btn.getAttribute('aria-disabled') === 'true') continue;
                         if (!btn.querySelector('svg')) continue;
-                        if (btn.closest('[class*="sidebar"], [class*="nav"], [class*="history"], [class*="conversation"]')) continue;
                         return btn;
                     }
                 }
             }
-            // 找不到時回傳 null，交由 submitToLLM 以 Enter 鍵備援送出（不再全域亂抓）
             return null;
         }
 
-        // Gemini
-        return document.querySelector(
+        // Gemini: 精確鎖定包含送出圖示或特定屬性的按鈕
+        const geminiBtn = document.querySelector(
             'button[aria-label*="傳送"], button[aria-label*="發送"], button[aria-label*="Send"], ' +
             '.send-button-container button, button.send-button, ' +
             'rich-textarea ~ * button[aria-label*="提示"], ' +
             'button:has(mat-icon[fonticon*="send"]), button:has(span[data-icon="send"])'
         );
+        return geminiBtn;
     }
-
-    // 跨平台相容送出機制 (針對 Gemini TrustedHTML 與 RichText 深度適配)
     async function submitToLLM(text) {
         const inputEl = getInputElement();
         if (!inputEl) {
@@ -469,93 +451,73 @@
 
         inputEl.focus();
 
-        if (inputEl.tagName && inputEl.tagName.toLowerCase() === 'textarea') {
-            const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
-            if (setter) {
-                setter.call(inputEl, text);
+        // 1. 純 DOM 操作：逐行建立 <p> 節點，嚴禁使用 innerHTML 以免被 Trusted Types 攔截
+        const lines = text.split('\n');
+        const pElements = [];
+
+        for (const line of lines) {
+            const p = document.createElement('p');
+            if (line.length === 0) {
+                p.appendChild(document.createElement('br'));
             } else {
-                inputEl.value = text;
+                p.textContent = line; // textContent 不受 TrustedHTML 限制
             }
-        } else {
-            // 純 DOM 逐行構建 <p> 結構，徹底繞過 Trusted Types 安全策略限制
-            const lines = text.split('\n');
-            const pElements = [];
-
-            for (const line of lines) {
-                const p = document.createElement('p');
-                if (line.length === 0) {
-                    p.appendChild(document.createElement('br'));
-                } else {
-                    p.textContent = line;
-                }
-                pElements.push(p);
-            }
-
-            while (inputEl.firstChild) {
-                inputEl.removeChild(inputEl.firstChild);
-            }
-            for (const p of pElements) {
-                inputEl.appendChild(p);
-            }
-
-            const selection = window.getSelection();
-            const range = document.createRange();
-            range.selectNodeContents(inputEl);
-            range.collapse(false);
-            selection.removeAllRanges();
-            selection.addRange(range);
+            pElements.push(p);
         }
 
+        // 2. 清空現有子節點並插入新的段落結構
+        while (inputEl.firstChild) {
+            inputEl.removeChild(inputEl.firstChild);
+        }
+        for (const p of pElements) {
+            inputEl.appendChild(p);
+        }
+
+        // 3. 移動選取範圍（Selection）至末尾，模擬真實鍵入完成狀態
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(inputEl);
+        range.collapse(false);
+        selection.removeAllRanges();
+        selection.addRange(range);
+
+        // 4. 派發完整的合成輸入事件
         inputEl.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
         inputEl.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
         inputEl.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, composed: true, inputType: 'insertText' }));
         inputEl.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, composed: true, key: 'End' }));
 
-        let btn = null;
-        for (let attempt = 0; attempt < 25; attempt++) {
+        // 5. 輪詢等待送出按鈕解鎖（最多 25 次，共 2.5 秒）
+        let sendBtn = null;
+        for (let i = 0; i < 25; i++) {
+            await new Promise((r) => setTimeout(r, 100));
             const candidate = getSendButton();
-            const clickable = candidate && !candidate.disabled && candidate.getAttribute('aria-disabled') !== 'true';
-            if (clickable) {
-                btn = candidate;
+            if (candidate && !candidate.disabled && candidate.getAttribute('aria-disabled') !== 'true') {
+                sendBtn = candidate;
                 break;
             }
-            await new Promise((r) => setTimeout(r, 100));
         }
 
+        // 6. 送出點擊
         isProgrammaticSubmit = true;
         try {
-            if (btn) {
-                btn.click();
+            if (sendBtn) {
                 console.log('[Bridge] ✓ 送出按鈕已就緒，執行點擊');
+                sendBtn.click();
             } else {
-                console.warn('[Bridge] ⚠️ 按鈕未解鎖，嘗試以點擊備援');
-                const fallbackBtn = getSendButton();
-                if (fallbackBtn) {
-                    fallbackBtn.removeAttribute('disabled');
-                    fallbackBtn.setAttribute('aria-disabled', 'false');
-                    fallbackBtn.click();
-                } else {
-                    inputEl.focus();
-                    const mkKey = (type) => new KeyboardEvent(type, {
-                        key: 'Enter',
-                        code: 'Enter',
-                        keyCode: 13,
-                        which: 13,
-                        bubbles: true,
-                        cancelable: true,
-                        composed: true
-                    });
-                    inputEl.dispatchEvent(mkKey('keydown'));
-                    inputEl.dispatchEvent(mkKey('keypress'));
-                    inputEl.dispatchEvent(mkKey('keyup'));
-                    console.log('[Bridge] 透過輸入框 Enter 模擬送出訊息');
+                console.warn('[Bridge] ⚠️ 按鈕未解鎖，嘗試解除屬性後點擊');
+                const btn = getSendButton();
+                if (btn) {
+                    btn.removeAttribute('disabled');
+                    btn.setAttribute('aria-disabled', 'false');
+                    btn.click();
                 }
             }
         } finally {
             setTimeout(() => { isProgrammaticSubmit = false; }, 500);
         }
 
-        await new Promise((r) => setTimeout(r, 1200));
+        await new Promise((r) => setTimeout(r, 1500));
         return true;
     }
 
@@ -630,7 +592,6 @@
         return Boolean(payload.tool && typeof payload.tool === 'string');
     }
 
-    // 跨平台提取最新助手訊息節點
     function getNextToolCall(peek = false) {
         const platform = getPlatform();
         let assistantMessages = [];
@@ -638,7 +599,6 @@
         if (platform === 'chatgpt') {
             assistantMessages = Array.from(document.querySelectorAll('div[data-message-author-role="assistant"]'));
         } else if (platform === 'deepseek') {
-            // 排除含有使用者標記的容器，選取 DeepSeek 模型回覆
             const dsBlocks = Array.from(document.querySelectorAll('.ds-message, .ds-markdown'));
             assistantMessages = dsBlocks.filter(el => !el.closest('.ds-message--user, [data-is-user="true"]') && el.offsetParent !== null);
         } else {
@@ -652,14 +612,12 @@
 
         if (!assistantMessages.length) return null;
 
-        // 鎖定最後一個助手訊息
         const latestMsg = assistantMessages[assistantMessages.length - 1];
 
         if (latestMsg.closest('.user-query, [data-message-author-role="user"], .ds-message--user')) {
             return null;
         }
 
-        // 選取代碼區塊
         const codeBlocks = latestMsg.querySelectorAll('code[data-test-id="code-content"], pre code, pre');
 
         for (const el of codeBlocks) {
@@ -683,14 +641,12 @@
             } else if (text.startsWith('[') || text.startsWith('{') || text.includes('tool_call')) {
                 if (peek) return { syntaxError: true, element: el, peeked: true };
                 el.dataset.bridgeExecuted = 'true';
-                {
-                    console.warn('[Bridge] ⚠️ 偵測到損壞的 Tool Call JSON 語法');
-                    return {
-                        syntaxError: true,
-                        element: el,
-                        rawSnippet: text.length > 300 ? text.substring(0, 300) + '...' : text
-                    };
-                }
+                console.warn('[Bridge] ⚠️ 偵測到損壞的 Tool Call JSON 語法');
+                return {
+                    syntaxError: true,
+                    element: el,
+                    rawSnippet: text.length > 300 ? text.substring(0, 300) + '...' : text
+                };
             }
         }
         return null;
@@ -701,7 +657,6 @@
         if (isExecuting || isStreaming() || (now - lastExecutionTime < RESULT_COOLDOWN_MS)) return;
         createMetricsUI();
 
-        // 以窺視模式（peek）偵測，不標記已消費，以便累積輸出穩定度
         const peekTarget = getNextToolCall(true);
         if (!peekTarget) {
             lastSeenToolText = '';
@@ -709,22 +664,18 @@
             return;
         }
 
-        // 輸出穩定度檢測：tool_call 文字需連續 STABLE_THRESHOLD 輪不變，才視為模型輸出完成
         const currentText = (peekTarget.element && (peekTarget.element.innerText || peekTarget.element.textContent)) || '';
         if (currentText === lastSeenToolText && currentText.length > 0) {
             stableToolCount += 1;
         } else {
             lastSeenToolText = currentText;
             stableToolCount = 0;
-            console.log('[Bridge] ⏳ 偵測到 tool_call 輸出中，等待穩定...');
             return;
         }
         if (stableToolCount < STABLE_THRESHOLD) {
-            console.log(`[Bridge] ⏳ 輸出穩定檢測中 (${stableToolCount}/${STABLE_THRESHOLD})...`);
             return;
         }
 
-        // 輸出已穩定，正式消費（標記 bridgeExecuted 並取回目標）
         lastSeenToolText = '';
         stableToolCount = 0;
         const target = getNextToolCall(false);
@@ -736,7 +687,7 @@
             const errorFeedback = {
                 status: 'error',
                 error_type: 'JSON_SYNTAX_ERROR',
-                output: '[Bridge 格式解析失敗] 您輸出的 tool_call 無法解析為標準 JSON。\n請檢查括號對稱性（例如勿輸出 [{]} 或 [{]]）、引號閉合與跳脫字元。\n\n標準範例:\n```tool_call\n[\n  {\n    "tool": "file_read",\n    "parameters": {"path": "example.py"}\n  }\n]\n```',
+                output: '[Bridge 格式解析失敗] 您輸出的 tool_call 無法解析為標準 JSON。\n請檢查括號對稱性、引號閉合與跳脫字元。',
                 raw_received: target.rawSnippet,
                 exit_code: -1
             };
@@ -755,7 +706,9 @@
             const isSuccess = (res && (res.status === 'success' || res.status === 'ok'));
             recordMetric(isSuccess);
 
+            console.log('[Bridge Debug] 後端回傳原始物件 (res):', res);
             const reply = `[TOOL_RESULT]\n\`\`\`json\n${JSON.stringify(res, null, 2)}\n\`\`\``;
+            console.log('[Bridge Debug] 即將送出的完整回覆字串 (reply):', reply);
             await submitToLLM(reply);
         } catch (err) {
             console.error('[Bridge] Tool 執行失敗:', err);
