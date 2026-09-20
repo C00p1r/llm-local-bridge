@@ -177,6 +177,7 @@
     let detactInterval = 1500;
     const STABLE_THRESHOLD = 2;
     const RESULT_COOLDOWN_MS = 2500;
+    const PRE_SUBMIT_DELAY_MS = 800;
     let lastSeenToolText = '';
     let stableToolCount = 0;
     let isProgrammaticSubmit = false;
@@ -490,7 +491,12 @@
         inputEl.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, composed: true, inputType: 'insertText' }));
         inputEl.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, composed: true, key: 'End' }));
 
-        // 5. 輪詢等待送出按鈕解鎖（最多 25 次，共 2.5 秒）
+        // 5. 文字填入後之緩衝延遲（確保前端狀態與富文字框完成同步）
+        if (PRE_SUBMIT_DELAY_MS > 0) {
+            await new Promise((r) => setTimeout(r, PRE_SUBMIT_DELAY_MS));
+        }
+
+        // 6. 輪詢等待送出按鈕解鎖（最多 25 次，共 2.5 秒）
         let sendBtn = null;
         for (let i = 0; i < 25; i++) {
             await new Promise((r) => setTimeout(r, 100));
@@ -501,20 +507,14 @@
             }
         }
 
-        // 6. 送出點擊
+        // 7. 送出點擊
         isProgrammaticSubmit = true;
         try {
             if (sendBtn) {
                 console.log('[Bridge] ✓ 送出按鈕已就緒，執行點擊');
                 sendBtn.click();
             } else {
-                console.warn('[Bridge] ⚠️ 按鈕未解鎖，嘗試解除屬性後點擊');
-                const btn = getSendButton();
-                if (btn) {
-                    btn.removeAttribute('disabled');
-                    btn.setAttribute('aria-disabled', 'false');
-                    btn.click();
-                }
+                console.warn('[Bridge] ⚠️ 按鈕未解鎖，略過強制點擊以避免請求異常');
             }
         } finally {
             setTimeout(() => { isProgrammaticSubmit = false; }, 500);
