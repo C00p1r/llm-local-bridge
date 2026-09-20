@@ -277,14 +277,32 @@ async def push_workspace_to_github(repo: str, branch: str = "main", message: str
     remote_tree_map = await _fetch_all_remote_tree_entries(api_base, base_tree_sha, headers)
 
     target_path = _resolve_target_path(subfolder)
-    ignored_dirs = {".git", "node_modules", "__pycache__", ".venv", "venv", "target", "dist"}
 
-    # 1. 快速掃描本地所有檔案
+    # 1. 取得受版本控制或待追蹤的有效檔案清單 (嚴格遵循 .gitignore 與本地 git 設定)
     local_files: List[Path] = []
-    for root, dirs, files in os.walk(target_path):
-        dirs[:] = [d for d in dirs if d not in ignored_dirs]
-        for f in files:
-            local_files.append(Path(root) / f)
+    git_bin = shutil.which("git")
+    if git_bin and (target_path / ".git").exists():
+        try:
+            # 列出所有被追蹤或未被 .gitignore 排除的檔案 (相對於 target_path)
+            cmd = [git_bin, "ls-files", "--cached", "--others", "--exclude-standard"]
+            res = subprocess.run(cmd, cwd=str(target_path), capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15)
+            if res.returncode == 0:
+                for line in res.stdout.splitlines():
+                    line = line.strip()
+                    if line:
+                        full_p = target_path / line
+                        if full_p.is_file():
+                            local_files.append(full_p)
+        except Exception:
+            local_files = []
+
+    # 若無 git 倉庫或 ls-files 失敗，以 filesystem walk 作為備援，但嚴格過濾常見快取與資料目錄
+    if not local_files:
+        ignored_dirs = {".git", "node_modules", "__pycache__", ".venv", "venv", "target", "dist", ".idea", ".vscode", "data"}
+        for root, dirs, files in os.walk(target_path):
+            dirs[:] = [d for d in dirs if d not in ignored_dirs]
+            for f in files:
+                local_files.append(Path(root) / f)
 
     if not local_files:
         return {"status": "error", "output": "沒有發現可推送的檔案", "exit_code": -1}
@@ -332,8 +350,8 @@ async def push_workspace_to_github(repo: str, branch: str = "main", message: str
                 "sha": local_sha
             })
 
-    # 若需要上傳的檔案過多，進行全域上限保護
-    if len(pending_uploads) > 200:
+    # 若需要上傳的檔案過多，進行全域上限保護 (以實際需要建立 Blob 上傳的檔案數為準，上限 500 檔)
+    if len(pending_uploads) > 500:
         return {
             "status": "error",
             "output": f"檢測到待上傳變更檔案過多 ({len(pending_uploads)} 檔)，請先精簡目錄或檢查 .gitignore 排除不必要的檔案",
