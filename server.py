@@ -11,7 +11,7 @@ try:
     import pyautogui
 except ImportError:
     pyautogui = None
-from config import SESSION_TOKEN, ALLOWED_ORIGINS
+from config import SESSION_TOKEN, ALLOWED_ORIGINS, WORKSPACE_DIR, get_active_project, get_scoped_workspace_dir
 from github_client import git_clone, git_fetch, git_pull
 from tools import TOOL_CATALOG, SUPPORTED_TOOLS, TOOL_HANDLERS, validate_tool_parameters
 from handlers import register_all_handlers
@@ -116,8 +116,11 @@ async def execute_tool(req: Union[ExecuteRequest, List[ExecuteRequest]], token: 
             params = req.parameters or {}
             print(f"[Bridge] 收到單一執行請求: {tool_name}")
             res = await _execute_single_tool(tool_name, params)
-            if tool_name in ["file_write", "file_replace", "patch_and_test", "run_script"]:
+            if tool_name in ["file_write", "file_replace", "patch_and_test", "run_script", "set_active_project"]:
                 memory_manager.schedule_background_snapshot()
+            if isinstance(res, dict):
+                res["active_project"] = get_active_project()
+                res["workspace_scope"] = str(get_scoped_workspace_dir())
             return res
 
         # 支援批次陣列請求 (Fail-Fast pipeline)
@@ -128,7 +131,7 @@ async def execute_tool(req: Union[ExecuteRequest, List[ExecuteRequest]], token: 
             for idx, item in enumerate(req):
                 tool_name = item.tool
                 params = item.parameters or {}
-                if tool_name in ["file_write", "file_replace", "patch_and_test", "run_script"]:
+                if tool_name in ["file_write", "file_replace", "patch_and_test", "run_script", "set_active_project"]:
                     has_file_modifications = True
                 print(f"[Bridge] 執行批次步驟 [{idx + 1}/{len(req)}]: {tool_name}")
                 res = await _execute_single_tool(tool_name, params)
@@ -151,7 +154,9 @@ async def execute_tool(req: Union[ExecuteRequest, List[ExecuteRequest]], token: 
                         "total_steps": len(req),
                         "batch_results": batch_results,
                         "output": f"第 {idx + 1} 步執行失敗 ({tool_name})，已中止後續指令。",
-                        "exit_code": exit_code if exit_code != 0 else -1
+                        "exit_code": exit_code if exit_code != 0 else -1,
+                        "active_project": get_active_project(),
+                        "workspace_scope": str(get_scoped_workspace_dir())
                     }
 
             if has_file_modifications:
@@ -162,7 +167,9 @@ async def execute_tool(req: Union[ExecuteRequest, List[ExecuteRequest]], token: 
                 "total_steps": len(req),
                 "batch_results": batch_results,
                 "output": f"全部 {len(req)} 項批次指令順利執行完成。",
-                "exit_code": 0
+                "exit_code": 0,
+                "active_project": get_active_project(),
+                "workspace_scope": str(get_scoped_workspace_dir())
             }
 
     except Exception as e:

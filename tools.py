@@ -5,6 +5,8 @@ SUPPORTED_TOOLS = [
     "file_write",
     "file_replace",
     "patch_and_test",
+    "set_active_project",
+    "get_workspace_state",
     "git_clone",
     "git_pull",
     "git_push",
@@ -122,6 +124,18 @@ TOOL_CATALOG = {
                 "timeout": {"type": "int", "required": False, "default": 30, "description": "測試指令逾時秒數"},
                 "auto_rollback": {"type": "bool", "required": False, "default": False, "description": "測試失敗時是否自動還原檔案"}
             }
+        },
+        {
+            "name": "set_active_project",
+            "description": "釘選當前工作子專案路徑，後續所有指令與工具邊界將自動切換至該專案下 (避免路徑漂移與跨專案誤操作)",
+            "parameters": {
+                "project_path": {"type": "str", "required": True, "description": "子專案相對目錄 (傳入空字串或 '.' 則重設回工作區根目錄)"}
+            }
+        },
+        {
+            "name": "get_workspace_state",
+            "description": "查詢當前釘選的工作專案、絕對路徑與 Git 版控即時狀態",
+            "parameters": {}
         },
         {
             "name": "list_tool",

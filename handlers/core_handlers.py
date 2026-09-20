@@ -55,6 +55,57 @@ def register_core_handlers():
         end_line = params.get("end_line")
         return file_manager.read_workspace_file(path, start_line=start_line, end_line=end_line)
 
+    @register_tool("set_active_project")
+    async def _handle_set_active_project(params: Dict[str, Any]):
+        from config import set_active_project, get_scoped_workspace_dir
+        project_path = params.get("project_path", "")
+        res = set_active_project(project_path)
+        if res.get("status") == "success":
+            memory_manager.schedule_background_snapshot()
+            return {
+                "status": "success",
+                "output": f"{res.get('message')}\n當前工作邊界: {res.get('current_scope')}",
+                "active_project": res.get("active_project"),
+                "current_scope": res.get("current_scope"),
+                "exit_code": 0
+            }
+        else:
+            return {
+                "status": "error",
+                "output": f"[Bridge] 設定專案目錄失敗: {res.get('message')}",
+                "exit_code": -1
+            }
+
+    @register_tool("get_workspace_state")
+    async def _handle_get_workspace_state(params: Dict[str, Any]):
+        from config import get_active_project, get_scoped_workspace_dir, WORKSPACE_DIR
+        import shutil, subprocess
+        active = get_active_project()
+        scoped_dir = get_scoped_workspace_dir()
+        git_bin = shutil.which("git")
+        branch = "none"
+        is_dirty = False
+        if git_bin and (scoped_dir / ".git").exists():
+            try:
+                b_res = subprocess.run([git_bin, "rev-parse", "--abbrev-ref", "HEAD"], cwd=str(scoped_dir), capture_output=True, text=True, timeout=5)
+                if b_res.returncode == 0:
+                    branch = b_res.stdout.strip()
+                s_res = subprocess.run([git_bin, "status", "--porcelain"], cwd=str(scoped_dir), capture_output=True, text=True, timeout=5)
+                if s_res.returncode == 0 and s_res.stdout.strip():
+                    is_dirty = True
+            except Exception:
+                pass
+        return {
+            "status": "success",
+            "active_project": active,
+            "scoped_path": str(scoped_dir),
+            "workspace_root": str(WORKSPACE_DIR),
+            "git_branch": branch,
+            "git_dirty": is_dirty,
+            "output": f"專案狀態: active_project='{active}' (路徑: {scoped_dir}), Git 分支='{branch}', Dirty={is_dirty}",
+            "exit_code": 0
+        }
+
     @register_tool("capture_memory")
     async def _handle_capture_memory(params: Dict[str, Any]):
         snapshot = await memory_manager.async_capture_snapshot()

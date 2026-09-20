@@ -55,3 +55,55 @@ DEFAULT_TIMEOUT_SEC = 20
 # 沙盒執行映像：可自訂為預裝 node/git/rg 與常用 Python 模組的映像
 # 預設沿用官方 slim 映像；建置自訂映像後於 .env 設定 SANDBOX_IMAGE
 SANDBOX_IMAGE = os.getenv("SANDBOX_IMAGE", "python:3.11-slim")
+
+# --- 專案工作目錄釘選與隔離狀態管理 (Project Pinning State) ---
+_ACTIVE_PROJECT: str = ""
+
+def get_active_project() -> str:
+    global _ACTIVE_PROJECT
+    return _ACTIVE_PROJECT
+
+def set_active_project(project_path: str = "") -> dict:
+    global _ACTIVE_PROJECT
+    clean_sub = (project_path or "").strip().replace("\\", "/").strip("/")
+    if not clean_sub or clean_sub == ".":
+        _ACTIVE_PROJECT = ""
+        return {
+            "status": "success",
+            "active_project": "",
+            "current_scope": str(WORKSPACE_DIR),
+            "message": "已重設工作目錄至工作區根目錄"
+        }
+    target = (WORKSPACE_DIR / clean_sub).resolve()
+    if not str(target).startswith(str(WORKSPACE_DIR)):
+        return {
+            "status": "error",
+            "message": f"指定的專案目錄越界: {project_path}"
+        }
+    if not target.exists():
+        return {
+            "status": "error",
+            "message": f"專案目錄不存在: {clean_sub}"
+        }
+    _ACTIVE_PROJECT = clean_sub
+    return {
+        "status": "success",
+        "active_project": _ACTIVE_PROJECT,
+        "current_scope": str(target),
+        "message": f"成功釘選當前工作專案為: {_ACTIVE_PROJECT}"
+    }
+
+def get_scoped_workspace_dir() -> Path:
+    if _ACTIVE_PROJECT:
+        scoped = (WORKSPACE_DIR / _ACTIVE_PROJECT).resolve()
+        if str(scoped).startswith(str(WORKSPACE_DIR)) and scoped.exists():
+            return scoped
+    return WORKSPACE_DIR
+
+def resolve_scoped_path(rel_path: str = "") -> tuple[Path, Path]:
+    base_dir = get_scoped_workspace_dir()
+    clean_rel = (rel_path or "").strip()
+    if not clean_rel or clean_rel == ".":
+        return base_dir, base_dir
+    target = (base_dir / clean_rel).resolve()
+    return target, base_dir

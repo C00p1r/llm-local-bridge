@@ -29,9 +29,9 @@
 * `sandbox/`：自訂沙盒映像資源（`Dockerfile` + `build.sh` + requirements 清單）。可在維持 `--network none` 的前提下，預裝 node / git / ripgrep 與常用 Python 模組。
 * `github_client.py`：GitHub 協同模組，由主機端代為處理 `clone`、`fetch`、`pull`、`push_workspace` 及 REST API 操作。
 * `memory_manager.py`：專案快照與記憶體管理，動態維護工作區目錄結構與環境狀態。
-* `config.py`：環境與安全設定（工作區路徑、逾時時間、字數限制、Token 生成）。
+* `config.py`：環境與安全設定（工作區路徑、動態釘選專案作用域 `active_project`、路徑防穿越校驗、逾時時間、Token 生成）。
 * `launcher.py`：一鍵啟動腳本，自動檢查 Docker 與環境依賴。
-* `tampermonkey_script.js`：瀏覽器使用者腳本 (v4.13.0)，支援 ChatGPT、Google Gemini、DeepSeek 三大網頁版 LLM 平台，負責攔截對話、強制工具呼叫切換 (`⚡ ToolCall: ON/OFF`)、解析單一/批次 Tool Call、回填 `[TOOL_RESULT]` 並顯示即時調用成功率 (Badge %)。
+* `tampermonkey_script.js`：瀏覽器使用者腳本 (v4.15.0)，支援 ChatGPT、Google Gemini、DeepSeek 三大網頁版 LLM平台，負責攔截對話、強制工具呼叫切換 (`⚡ ToolCall: ON/OFF`)、解析單一/批次 Tool Call、回填 `[TOOL_RESULT]` 並顯示即時調用成功率 (Badge %)。
 * `requirements.txt`：Python 後端依賴套件清單。
 
 ---
@@ -90,7 +90,25 @@
 ]
 ```
 
-### 5. GitHub / Git 操作 (`github_action`)
+### 5. 動態專案釘選與狀態感知 (`set_active_project`, `get_workspace_state`)
+支援在工作區內切換子專案，並將檔案存取邊界與 Docker 沙盒工作目錄同步對齊至該專案：
+```json
+{
+  "tool": "set_active_project",
+  "parameters": {
+    "project": "sub_project_folder"
+  }
+}
+```
+檢視當前釘選狀態與 Git 狀態：
+```json
+{
+  "tool": "get_workspace_state",
+  "parameters": {}
+}
+```
+
+### 6. GitHub / Git 操作 (`github_action`)
 由主機連網環境代為執行 Git 操作或呼叫 GitHub REST API：
 * **推送工作區 (`push_workspace` / `push`)**：
 ```json

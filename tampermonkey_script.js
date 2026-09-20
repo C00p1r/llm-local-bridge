@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         LLM Local Bridge Agent (v4.14.0 - Clean & Gemini Fix)
+// @name         LLM Local Bridge Agent (v4.15.0 - Scoped Project Pinning)
 // @namespace    https://local.bridge/
-// @version      4.14.0
+// @version      4.15.0
 // @description  LLM Local Bridge supporting ChatGPT, Gemini, and DeepSeek Web
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
@@ -27,7 +27,7 @@
     window.__llm_local_bridge_loaded__ = true;
 
     console.log(
-        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.14.0 (Multi-Platform: ChatGPT / Gemini / DeepSeek)',
+        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.15.0 (Multi-Platform: ChatGPT / Gemini / DeepSeek)',
         'color:#22c55e;font-weight:bold;font-size:14px;'
     );
 
@@ -133,9 +133,12 @@
   - \`git_clone\`, \`git_pull\`, \`git_push\`, \`git_diff\`, \`git_status\`, \`git_log\`, \`git_blame\`, \`git_branch\`, \`git_checkout\`, \`git_clean\`
 
 - **system 群組 (系統與除錯)**:
+  - \`set_active_project\`: 動態釘選作用域專案目錄（路徑邊界與 Docker 自動對齊）。
+  - \`get_workspace_state\`: 取得當前工作區狀態與釘選目錄資訊。
   - \`capture_memory\`: 捕捉專案架構快照。
 
 ### 三、 執行與呼叫原則
+- **專案隔離原則**：若工作區包含多個專案或子目錄，優先呼叫 \`set_active_project(project="...")\` 釘選當前專案；釘選後所有檔案操作、程式碼檢索與 Docker 容器工作目錄皆會自動限制於該子目錄，避免跨專案污染與路徑越界。
 - 修改現有檔案時一律優先使用 file_replace (或 patch_and_test)。
 - 僅在建立全新檔案時使用 file_write。
 - 若需使用進階工具的詳細參數，請先呼叫 \`list_tool(category="...")\` 查詢。

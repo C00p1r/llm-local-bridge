@@ -8,7 +8,7 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 from typing import Dict, Any, Optional, List
-from config import WORKSPACE_DIR, GITHUB_TOKEN
+from config import WORKSPACE_DIR, GITHUB_TOKEN, get_scoped_workspace_dir, resolve_scoped_path
 
 AVAILABLE_ACTIONS = {
     "pull": "Pull changes from remote repository (params: subfolder, remote, branch, force_reset)",
@@ -38,7 +38,10 @@ def get_git_executable() -> str:
     return git_path
 
 def _resolve_target_path(subfolder: str = "") -> Path:
-    return (WORKSPACE_DIR / subfolder).resolve() if subfolder else WORKSPACE_DIR
+    target, base_scope = resolve_scoped_path(subfolder)
+    if not str(target).startswith(str(base_scope)):
+        raise ValueError(f"[Bridge Security] Path out of scoped workspace: {subfolder}")
+    return target
 
 def git_clone(repo_url: str, target_subfolder: str = "") -> Dict[str, Any]:
     try:

@@ -1,7 +1,7 @@
 import uuid
 import os
 from pathlib import Path
-from config import WORKSPACE_DIR, MAX_OUTPUT_CHARS, DEFAULT_TIMEOUT_SEC, SANDBOX_IMAGE
+from config import WORKSPACE_DIR, MAX_OUTPUT_CHARS, DEFAULT_TIMEOUT_SEC, SANDBOX_IMAGE, get_scoped_workspace_dir, get_active_project
 
 DOCKER_IMAGE = SANDBOX_IMAGE
 
@@ -17,6 +17,9 @@ def _get_docker_user_args() -> list:
 async def run_shell_command(command: str, timeout: int = DEFAULT_TIMEOUT_SEC) -> dict:
     import asyncio
     workspace_abs = str(Path(WORKSPACE_DIR).resolve())
+    active_proj = get_active_project()
+    # 若當前釘選了子專案，容器內工作目錄自動切換為對應子資料夾 (/workspace/<subfolder>)
+    container_workdir = f"/workspace/{active_proj}" if active_proj else "/workspace"
 
     docker_args = [
         "docker", "run",
@@ -26,7 +29,7 @@ async def run_shell_command(command: str, timeout: int = DEFAULT_TIMEOUT_SEC) ->
         "--memory", "1g",
         *(_get_docker_user_args()),
         "-v", f"{workspace_abs}:/workspace:rw",
-        "-w", "/workspace",
+        "-w", container_workdir,
         DOCKER_IMAGE,
         "sh", "-c", command
     ]
@@ -85,9 +88,9 @@ async def run_transient_script(code: str, language: str = "python", timeout: int
         "javascript": (".js", "node"),
     }
     ext, runner = ext_map.get(lang_clean, (".sh", "sh"))
-    workspace_path = Path(WORKSPACE_DIR).resolve()
+    scoped_path = get_scoped_workspace_dir()
     temp_filename = f".temp_{uuid.uuid4().hex[:8]}{ext}"
-    temp_file_path = workspace_path / temp_filename
+    temp_file_path = scoped_path / temp_filename
 
     try:
         normalized_code = code.replace("\r\n", "\n").replace("\r", "\n")

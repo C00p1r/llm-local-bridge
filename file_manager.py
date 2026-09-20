@@ -3,7 +3,14 @@ import stat
 import subprocess
 from pathlib import Path
 from typing import Optional
-from config import WORKSPACE_DIR
+from config import WORKSPACE_DIR, resolve_scoped_path, get_scoped_workspace_dir
+
+def _resolve_and_guard(path: str = "") -> tuple[Path, Optional[dict]]:
+    """根據當前 scoped project 解析目標路徑並實施沙盒邊界隔離防護"""
+    target_path, base_scope = resolve_scoped_path(path)
+    if not str(target_path).startswith(str(base_scope)):
+        return target_path, {"status": "error", "output": f"[Bridge Security] Path traversal detected: 路徑超出當前工作專案邊界 ({base_scope})", "exit_code": -1}
+    return target_path, None
 
 def _ensure_writable(path_obj: Path):
     """嘗試解除 Docker root 產生的唯讀標記或修復權限"""
@@ -25,10 +32,9 @@ def validate_python_syntax(file_path: str, code_content: str) -> Optional[str]:
 
 def write_workspace_file(path: str, content: str) -> dict:
     try:
-        target_path = (Path(WORKSPACE_DIR) / path).resolve()
-        workspace_path = Path(WORKSPACE_DIR).resolve()
-        if not str(target_path).startswith(str(workspace_path)):
-            return {"status": "error", "output": "[Bridge] Path out of workspace", "exit_code": -1}
+        target_path, err = _resolve_and_guard(path)
+        if err:
+            return err
         
         normalized_content = content.replace("\r\n", "\n").replace("\r", "\n")
         
@@ -55,10 +61,9 @@ def replace_file_content(path: str, target: str, replacement: str) -> dict:
     5. 若為 Python 檔，內建語法驗證防護 (AST parse)，失敗則不寫入。
     """
     try:
-        target_path = (Path(WORKSPACE_DIR) / path).resolve()
-        workspace_path = Path(WORKSPACE_DIR).resolve()
-        if not str(target_path).startswith(str(workspace_path)):
-            return {"status": "error", "output": "[Bridge] Path out of workspace", "exit_code": -1}
+        target_path, err = _resolve_and_guard(path)
+        if err:
+            return err
         if not target_path.exists() or not target_path.is_file():
             return {"status": "error", "output": f"[Bridge] File not found: {path}", "exit_code": -1}
 
@@ -104,10 +109,9 @@ def read_workspace_file(path: str, start_line: Optional[int] = None, end_line: O
     結構化讀取工作區檔案，支援指定行號範圍並附帶行號。
     """
     try:
-        target_path = (Path(WORKSPACE_DIR) / path).resolve()
-        workspace_path = Path(WORKSPACE_DIR).resolve()
-        if not str(target_path).startswith(str(workspace_path)):
-            return {"status": "error", "output": "[Bridge] Path out of workspace", "exit_code": -1}
+        target_path, err = _resolve_and_guard(path)
+        if err:
+            return err
         if not target_path.exists() or not target_path.is_file():
             return {"status": "error", "output": f"[Bridge] File not found: {path}", "exit_code": -1}
 

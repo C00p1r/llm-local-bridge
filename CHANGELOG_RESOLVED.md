@@ -1,5 +1,18 @@
 # Changelog & Release Notes
 
+## v4.15.0 (2026-09-20)
+- **Scoped Project Pinning & Dynamic Sandbox Boundary (`config.py`, `handlers/core_handlers.py`, `tools.py`)**:
+  - 新增 `set_active_project` 與 `get_workspace_state` 工具，支援在多專案工作區動態切換 active project。
+  - 核心狀態與路徑校驗機制（`resolve_scoped_path`、`get_scoped_workspace_dir`）將釘選的專案目錄視為安全隔離邊界，嚴格防範路徑越界與跨專案污染。
+- **Modular Scoped Isolation (`file_manager.py`, `search_ops.py`, `github_client.py`)**:
+  - `list_dir`、`get_outline`、`search_codebase`、`find_references` 及 Git CLI 操作全數接入動態作用域，未指定子路徑時自動以當前 active project 為根目錄。
+- **Docker Sandbox Workdir Synchronization (`sandbox.py`)**:
+  - Docker 容器工作目錄動態對齊 `-w /workspace/<active_project>`，且 `run_transient_script` 暫存腳本直接於作用域目錄中生成與清理。
+- **Active Context Injection in Bridge API (`server.py`)**:
+  - `/execute` 單一及批次端點回傳皆自動附帶 `active_project` 與 `workspace_scope`，杜絕 LLM 對話中的工作目錄漂移問題。
+- **Tampermonkey System Prompt Synchronization (`tampermonkey_script.js` v4.15.0)**:
+  - 更新版本號至 v4.15.0，在系統提示詞中補充 `set_active_project` 與 `get_workspace_state` 規範，引導模型優先釘選專案目錄。
+
 ## v4.14.0 (2026-09-19)
 - **DeepSeek OS-Level Send Bypass (`/simulate_send`, `server.py`, `tampermonkey_script.js`)**: 在後端 `server.py` 新增 `/simulate_send` 端點，透過 `pyautogui` 派發具備物理延遲（150ms~350ms）的 OS 實體 Enter 事件，徹底繞過前端 WAF 對合成非受信任事件（`isTrusted: false`）的送出攔截限制。
 - **Zero-Race DOM Lock & In-Place Consumption (`tampermonkey_script.js`)**: 徹底消除 `peekTarget` 探測與正式消費之間兩度掃描 DOM 導致的節點競爭；一旦文字連續穩定（`STABLE_THRESHOLD`），原地標記 `markExecuted` 並直接消費，避免長對話或 DOM 重繪導致的 Tool Call 遺漏。

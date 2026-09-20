@@ -3,17 +3,16 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
-from config import WORKSPACE_DIR
+from config import WORKSPACE_DIR, resolve_scoped_path, get_scoped_workspace_dir
 
 def list_workspace_dir(path: str = "", max_depth: int = 3) -> dict:
     """
     結構化掃描目錄樹，自動忽略 .git, __pycache__, node_modules 等噪音目錄。
     """
     try:
-        target_dir = (Path(WORKSPACE_DIR) / path).resolve() if path else Path(WORKSPACE_DIR).resolve()
-        workspace_path = Path(WORKSPACE_DIR).resolve()
-        if not str(target_dir).startswith(str(workspace_path)):
-            return {"status": "error", "output": "[Bridge] Path out of workspace", "exit_code": -1}
+        target_dir, base_scope = resolve_scoped_path(path)
+        if not str(target_dir).startswith(str(base_scope)):
+            return {"status": "error", "output": f"[Bridge Security] Path out of scoped workspace ({base_scope})", "exit_code": -1}
         if not target_dir.exists() or not target_dir.is_dir():
             return {"status": "error", "output": f"[Bridge] Directory not found: {path}", "exit_code": -1}
 
@@ -54,10 +53,9 @@ def get_file_outline(path: str) -> dict:
     基於 AST 快速解析 Python 檔案符號大綱（Class / Function / Method）及其所在行號。
     """
     try:
-        target_path = (Path(WORKSPACE_DIR) / path).resolve()
-        workspace_path = Path(WORKSPACE_DIR).resolve()
-        if not str(target_path).startswith(str(workspace_path)):
-            return {"status": "error", "output": "[Bridge] Path out of workspace", "exit_code": -1}
+        target_path, base_scope = resolve_scoped_path(path)
+        if not str(target_path).startswith(str(base_scope)):
+            return {"status": "error", "output": f"[Bridge Security] Path out of scoped workspace ({base_scope})", "exit_code": -1}
         if not target_path.exists() or not target_path.is_file():
             return {"status": "error", "output": f"[Bridge] File not found: {path}", "exit_code": -1}
         if not path.endswith(".py"):
@@ -103,10 +101,9 @@ def search_codebase(query: str, path: str = "", include_pattern: str = "", max_r
     全專案文字或正則檢索。優先使用 ripgrep (rg)，若無則回退至 Python 原生目錄走訪。
     """
     try:
-        target_dir = (Path(WORKSPACE_DIR) / path).resolve() if path else Path(WORKSPACE_DIR).resolve()
-        workspace_path = Path(WORKSPACE_DIR).resolve()
-        if not str(target_dir).startswith(str(workspace_path)):
-            return {"status": "error", "output": "[Bridge] Path out of workspace", "exit_code": -1}
+        target_dir, base_scope = resolve_scoped_path(path)
+        if not str(target_dir).startswith(str(base_scope)):
+            return {"status": "error", "output": f"[Bridge Security] Path out of scoped workspace ({base_scope})", "exit_code": -1}
         if not target_dir.exists():
             return {"status": "error", "output": f"[Bridge] Path not found: {path}", "exit_code": -1}
 
@@ -173,10 +170,9 @@ def find_references(symbol: str, file_type: str = "", scope_dir: str = "") -> di
     尋找特定符號（Class / Function / Method / Variable）之定義處與使用處。
     """
     try:
-        target_dir = (Path(WORKSPACE_DIR) / scope_dir).resolve() if scope_dir else Path(WORKSPACE_DIR).resolve()
-        workspace_path = Path(WORKSPACE_DIR).resolve()
-        if not str(target_dir).startswith(str(workspace_path)):
-            return {"status": "error", "output": "[Bridge] Path out of workspace", "exit_code": -1}
+        target_dir, base_scope = resolve_scoped_path(scope_dir)
+        if not str(target_dir).startswith(str(base_scope)):
+            return {"status": "error", "output": f"[Bridge Security] Path out of scoped workspace ({base_scope})", "exit_code": -1}
         if not symbol or not symbol.strip():
             return {"status": "error", "output": "[Bridge] symbol 參數不能為空", "exit_code": -1}
 
