@@ -116,15 +116,18 @@ def search_codebase(query: str, path: str = "", include_pattern: str = "", max_r
             if include_pattern:
                 cmd.extend(["-g", include_pattern])
             cmd.extend(["--", query, str(target_dir)])
-            res = subprocess.run(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=15
-            )
+            try:
+                res = subprocess.run(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=15
+                )
+            except subprocess.TimeoutExpired:
+                return {"status": "timeout", "output": "搜尋執行逾時 (15s)", "matches_count": 0, "results": [], "exit_code": -1}
             if res.stdout:
                 rg_line_regex = re.compile(r"^(.*?):(\d+):(.*)$")
                 for line in res.stdout.splitlines()[:max_results]:
@@ -132,7 +135,7 @@ def search_codebase(query: str, path: str = "", include_pattern: str = "", max_r
                     if match:
                         file_path_str, line_num, content = match.group(1), match.group(2), match.group(3)
                         try:
-                            rel_f = str(Path(file_path_str).resolve().relative_to(workspace_path)).replace("\\", "/")
+                            rel_f = str(Path(file_path_str).resolve().relative_to(base_scope)).replace("\\", "/")
                         except ValueError:
                             rel_f = file_path_str.replace("\\", "/")
                         results.append({"file": rel_f, "line": int(line_num), "content": content.strip()})
@@ -149,7 +152,7 @@ def search_codebase(query: str, path: str = "", include_pattern: str = "", max_r
                     lines = item.read_text(encoding="utf-8", errors="ignore").splitlines()
                     for idx, line in enumerate(lines, start=1):
                         if pattern.search(line):
-                            rel_f = str(item.resolve().relative_to(workspace_path)).replace("\\", "/")
+                            rel_f = str(item.resolve().relative_to(base_scope)).replace("\\", "/")
                             results.append({"file": rel_f, "line": idx, "content": line.strip()})
                             if len(results) >= max_results:
                                 break
@@ -191,7 +194,7 @@ def find_references(symbol: str, file_type: str = "", scope_dir: str = "") -> di
                 lines = item.read_text(encoding="utf-8", errors="ignore").splitlines()
                 for idx, line in enumerate(lines, start=1):
                     if sym_regex.search(line):
-                        rel_f = str(item.resolve().relative_to(workspace_path)).replace("\\", "/")
+                        rel_f = str(item.resolve().relative_to(base_scope)).replace("\\", "/")
                         entry = {"file": rel_f, "line": idx, "content": line.strip()}
                         if def_regex.search(line):
                             definitions.append(entry)

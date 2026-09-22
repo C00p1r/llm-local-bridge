@@ -16,14 +16,17 @@ def _get_docker_user_args() -> list:
 
 async def run_shell_command(command: str, timeout: int = DEFAULT_TIMEOUT_SEC) -> dict:
     import asyncio
+    import subprocess
     workspace_abs = str(Path(WORKSPACE_DIR).resolve())
     active_proj = get_active_project()
     # 若當前釘選了子專案，容器內工作目錄自動切換為對應子資料夾 (/workspace/<subfolder>)
     container_workdir = f"/workspace/{active_proj}" if active_proj else "/workspace"
+    container_name = f"llm_bridge_sandbox_{uuid.uuid4().hex[:8]}"
 
     docker_args = [
         "docker", "run",
         "--rm",
+        "--name", container_name,
         "--network", "none",
         "--cpus", "2.0",
         "--memory", "1g",
@@ -47,11 +50,15 @@ async def run_shell_command(command: str, timeout: int = DEFAULT_TIMEOUT_SEC) ->
                 timeout=timeout
             )
         except asyncio.TimeoutError:
-            process.kill()
+            subprocess.run(["docker", "kill", container_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            try:
+                process.kill()
+            except Exception:
+                pass
             await process.wait()
             return {
                 "status": "timeout",
-                "output": f"指令執行逾時 ({timeout}s)",
+                "output": f"指令執行逾時 ({timeout}s)，已安全終止執行容器",
                 "exit_code": -1
             }
 
