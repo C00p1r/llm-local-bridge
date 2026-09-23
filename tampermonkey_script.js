@@ -7,6 +7,8 @@
 // @match        https://chat.openai.com/*
 // @match        https://gemini.google.com/*
 // @match        https://chat.deepseek.com/*
+// @match        brave://leo-ai/*
+// @match        *://*/*leo-ai*
 // @noframes
 // @grant        GM_setValue
 // @grant        GM_getValue
@@ -184,6 +186,8 @@
 
     function getPlatform() {
         const host = location.hostname;
+        const href = location.href;
+        if (href.startsWith('brave://leo-ai') || host.includes('leo-ai') || href.includes('leo-ai')) return 'leo';
         if (host.includes('deepseek')) return 'deepseek';
         if (host.includes('chatgpt') || host.includes('openai')) return 'chatgpt';
         return 'gemini';
@@ -380,6 +384,10 @@
 
     function isStreaming() {
         const platform = getPlatform();
+        if (platform === 'leo') {
+            const stopBtn = document.querySelector('button[aria-label*="Stop"], button[aria-label*="停止"], [data-testid*="stop"]');
+            return Boolean(stopBtn && stopBtn.offsetParent !== null && !stopBtn.disabled);
+        }
         if (platform === 'chatgpt') {
             return Boolean(document.querySelector('button[data-testid="stop-button"], .result-streaming'));
         }
@@ -397,6 +405,9 @@
 
     function getInputElement() {
         const platform = getPlatform();
+        if (platform === 'leo') {
+            return document.querySelector('textarea, [contenteditable="true"]');
+        }
         if (platform === 'chatgpt') {
             return document.querySelector('#prompt-textarea');
         }
@@ -410,6 +421,18 @@
     function getSendButton() {
         const platform = getPlatform();
         const inputEl = getInputElement();
+
+        if (platform === 'leo') {
+            const customBtn = document.querySelector('leo-button[data-testid="leo-submit-button"], [data-testid="leo-submit-button"]');
+            if (customBtn) {
+                if (customBtn.shadowRoot) {
+                    const innerBtn = customBtn.shadowRoot.querySelector('button');
+                    if (innerBtn) return innerBtn;
+                }
+                return customBtn;
+            }
+            return document.querySelector('button[title*="Leo"], button[title*="傳送"], button[aria-label*="傳送"]');
+        }
 
         if (platform === 'chatgpt') {
             return document.querySelector('button[data-testid="send-button"], button[aria-label="Send prompt"]');
@@ -455,41 +478,47 @@
 
         inputEl.focus();
 
-        // 1. 純 DOM 操作：逐行建立 <p> 節點，嚴禁使用 innerHTML 以免被 Trusted Types 攔截
-        const lines = text.split('\n');
-        const pElements = [];
+        if (inputEl.tagName === 'TEXTAREA' || inputEl.tagName === 'INPUT') {
+            inputEl.value = text;
+            inputEl.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+            inputEl.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+        } else {
+            // 1. 純 DOM 操作：逐行建立 <p> 節點，嚴禁使用 innerHTML 以免被 Trusted Types 攔截
+            const lines = text.split('\n');
+            const pElements = [];
 
-        for (const line of lines) {
-            const p = document.createElement('p');
-            if (line.length === 0) {
-                p.appendChild(document.createElement('br'));
-            } else {
-                p.textContent = line; // textContent 不受 TrustedHTML 限制
+            for (const line of lines) {
+                const p = document.createElement('p');
+                if (line.length === 0) {
+                    p.appendChild(document.createElement('br'));
+                } else {
+                    p.textContent = line; // textContent 不受 TrustedHTML 限制
+                }
+                pElements.push(p);
             }
-            pElements.push(p);
-        }
 
-        // 2. 清空現有子節點並插入新的段落結構
-        while (inputEl.firstChild) {
-            inputEl.removeChild(inputEl.firstChild);
-        }
-        for (const p of pElements) {
-            inputEl.appendChild(p);
-        }
+            // 2. 清空現有子節點並插入新的段落結構
+            while (inputEl.firstChild) {
+                inputEl.removeChild(inputEl.firstChild);
+            }
+            for (const p of pElements) {
+                inputEl.appendChild(p);
+            }
 
-        // 3. 移動選取範圍（Selection）至末尾，模擬真實鍵入完成狀態
-        const selection = window.getSelection();
-        const range = document.createRange();
-        range.selectNodeContents(inputEl);
-        range.collapse(false);
-        selection.removeAllRanges();
-        selection.addRange(range);
+            // 3. 移動選取範圍（Selection）至末尾，模擬真實鍵入完成狀態
+            const selection = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(inputEl);
+            range.collapse(false);
+            selection.removeAllRanges();
+            selection.addRange(range);
 
-        // 4. 派發完整的合成輸入事件
-        inputEl.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
-        inputEl.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-        inputEl.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, composed: true, inputType: 'insertText' }));
-        inputEl.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, composed: true, key: 'End' }));
+            // 4. 派發完整的合成輸入事件
+            inputEl.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+            inputEl.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+            inputEl.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, composed: true, inputType: 'insertText' }));
+            inputEl.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, composed: true, key: 'End' }));
+        }
 
         // 5. 文字填入後之緩衝延遲（確保前端狀態與富文字框完成同步）
         if (PRE_SUBMIT_DELAY_MS > 0) {
@@ -601,6 +630,9 @@
 
         if (platform === 'chatgpt') {
             assistantMessages = Array.from(document.querySelectorAll('div[data-message-author-role="assistant"]'));
+        } else if (platform === 'leo') {
+            const codeBlocks = Array.from(document.querySelectorAll('pre code, div[class*="gXOrg"] pre code, div[class*="y1xl2Ng"] pre code'));
+            assistantMessages = Array.from(new Set(codeBlocks.map(c => c.closest('div[class*="gXOrg"], pre') || c.parentElement))).filter(Boolean);
         } else if (platform === 'deepseek') {
             const dsBlocks = Array.from(document.querySelectorAll('.ds-message, .ds-markdown'));
             assistantMessages = dsBlocks.filter(el => !el.closest('.ds-message--user, [data-is-user="true"]') && el.offsetParent !== null);
