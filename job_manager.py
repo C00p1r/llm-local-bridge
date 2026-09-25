@@ -6,7 +6,8 @@ import threading
 import subprocess
 from pathlib import Path
 from typing import Dict, Any, Optional
-from config import WORKSPACE_DIR, get_scoped_workspace_dir, get_active_project
+from config import WORKSPACE_DIR, SANDBOX_IMAGE, get_scoped_workspace_dir, get_active_project
+from sandbox import _get_docker_user_args
 
 JOBS: Dict[str, Dict[str, Any]] = {}
 _lock = threading.Lock()
@@ -52,9 +53,22 @@ def get_and_clear_events() -> list:
             print(f"[Bridge Async] 讀取 events.json 失敗: {e}")
             return []
 
-def _job_supervisor(job_id: str, proc: subprocess.Popen, log_path: Path, notify: bool):
+def _job_supervisor(job_id: str, container_name: str, log_path: Path, notify: bool):
     start_time = time.time()
-    returncode = proc.wait()
+    try:
+        # 等待容器執行完畢並取得退出碼
+        res = subprocess.run(["docker", "wait", container_name], capture_output=True, text=True)
+        try:
+            returncode = int(res.stdout.strip())
+        except Exception:
+            returncode = res.returncode if res.returncode != 0 else -1
+    except Exception as e:
+        print(f"[Bridge Async] 等待容器 {container_name} 異常: {e}")
+        returncode = -1
+    finally:
+        # 清理已結束的沙盒容器
+        subprocess.run(["docker", "rm", "-f", container_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
     elapsed = round(time.time() - start_time, 2)
     summary_log = _tail_file(log_path, n_lines=15)
 
@@ -84,6 +98,7 @@ def _job_supervisor(job_id: str, proc: subprocess.Popen, log_path: Path, notify:
 def start_async_job(command: str, job_name: Optional[str] = None, log_file: Optional[str] = None, notify_on_complete: bool = True) -> dict:
     job_id = f"job_{uuid.uuid4().hex[:8]}"
     scoped_dir = get_scoped_workspace_dir()
+    active_proj = get_active_project()
     name = job_name or f"job_{job_id}"
     
     if log_file:
@@ -95,25 +110,54 @@ def start_async_job(command: str, job_name: Optional[str] = None, log_file: Opti
     
     log_p.parent.mkdir(parents=True, exist_ok=True)
 
-    flags = 0
-    if sys.platform == "win32":
-        flags = subprocess.CREATE_NEW_PROCESS_GROUP | getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
+    # 計算相對於工作區根目錄的路徑，供容器內重定向日誌
+    workspace_abs = str(Path(WORKSPACE_DIR).resolve())
+    try:
+        rel_log_path = log_p.relative_to(Path(WORKSPACE_DIR)).as_posix()
+        container_log_target = f"/workspace/{rel_log_path}"
+    except ValueError:
+        container_log_target = "/dev/null"
+
+    container_workdir = f"/workspace/{active_proj}" if active_proj else "/workspace"
+    container_name = f"llm_bridge_async_{job_id}"
+
+    # 將執行指令與輸出重定向封裝為容器執行
+    wrapped_command = f"{command} > {container_log_target} 2>&1"
+
+    docker_args = [
+        "docker", "run",
+        "-d",
+        "--name", container_name,
+        "--network", "none",
+        "--cpus", "2.0",
+        "--memory", "1g",
+        *(_get_docker_user_args()),
+        "-v", f"{workspace_abs}:/workspace:rw",
+        "-w", container_workdir,
+        SANDBOX_IMAGE,
+        "sh", "-c", wrapped_command
+    ]
 
     try:
-        f_out = open(log_p, "w", encoding="utf-8", errors="replace")
-        proc = subprocess.Popen(
-            command,
-            shell=True,
-            cwd=str(scoped_dir),
-            stdout=f_out,
-            stderr=subprocess.STDOUT,
-            creationflags=flags,
-            close_fds=(sys.platform != "win32")
-        )
+        # 以背景非同步方式啟動容器
+        res = subprocess.run(docker_args, capture_output=True, text=True)
+        if res.returncode != 0:
+            return {
+                "status": "error",
+                "output": f"啟動 Docker 沙盒非同步容器失敗: {res.stderr.strip() or res.stdout.strip()}",
+                "exit_code": res.returncode
+            }
+        container_id_short = res.stdout.strip()[:12]
+    except FileNotFoundError:
+        return {
+            "status": "error",
+            "output": "未在系統中找到 Docker，請確認 Docker Desktop / Daemon 是否已啟動。",
+            "exit_code": -1
+        }
     except Exception as e:
         return {
             "status": "error",
-            "output": f"啟動非同步程序失敗: {str(e)}",
+            "output": f"啟動非同步沙盒任務失敗: {str(e)}",
             "exit_code": -1
         }
 
@@ -121,7 +165,9 @@ def start_async_job(command: str, job_name: Optional[str] = None, log_file: Opti
         "job_id": job_id,
         "job_name": name,
         "command": command,
-        "pid": proc.pid,
+        "container_name": container_name,
+        "container_id": container_id_short,
+        "pid": container_id_short,
         "status": "RUNNING",
         "exit_code": None,
         "log_file": str(log_p),
@@ -133,17 +179,19 @@ def start_async_job(command: str, job_name: Optional[str] = None, log_file: Opti
     with _lock:
         JOBS[job_id] = job_info
 
-    thread = threading.Thread(target=_job_supervisor, args=(job_id, proc, log_p, notify_on_complete), daemon=True)
+    thread = threading.Thread(target=_job_supervisor, args=(job_id, container_name, log_p, notify_on_complete), daemon=True)
     thread.start()
 
     return {
         "status": "STARTED",
         "job_id": job_id,
         "job_name": name,
-        "pid": proc.pid,
+        "container_name": container_name,
+        "container_id": container_id_short,
+        "pid": container_id_short,
         "log_file": str(log_p),
         "notify_on_complete": notify_on_complete,
-        "output": f"非同步工作已啟動 [ID: {job_id}, PID: {proc.pid}]。日誌將寫入: {log_p}",
+        "output": f"非同步沙盒容器已啟動 [ID: {job_id}, Container: {container_name}]。日誌將寫入: {log_p}",
         "exit_code": 0
     }
 

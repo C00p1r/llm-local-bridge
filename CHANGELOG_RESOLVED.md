@@ -1,6 +1,10 @@
 # Changelog & Release Notes
 
 ## v4.15.2 (2026-09-25)
+- **Dockerized Async Sandbox Execution (`job_manager.py`)**:
+  - 將 `execute_async` 底層全面遷移至 Docker 沙盒容器（`docker run -d`），終結宿主機 Windows 與 Linux 容器環境分離導致的缺套件與 `multiprocessing` spawn 崩潰問題。
+  - 工作目錄自動對齊 `get_scoped_workspace_dir()` 與 `-w /workspace/<active_project>`，輸出日誌自動透過掛載磁碟重定向至指定 log。
+  - Supervisor 執行緒改為監聽 `docker wait` 並在結束後自動執行清理（`docker rm -f`），確保資源不洩漏。
 - **Parameter Alias Support for `set_active_project` (`handlers/core_handlers.py`, `tools.py`)**:
   - 支援 `project` 作為 `project_path` 的別名，LLM 傳入 `project` 或 `project_path` 皆可正確辨識與校驗。
   - 參數校驗器 `validate_tool_parameters` 自動進行別名正規化，防止參數缺少報錯。
