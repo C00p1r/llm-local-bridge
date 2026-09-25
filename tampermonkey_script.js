@@ -460,14 +460,19 @@
             return null;
         }
 
-        // Gemini: 精確鎖定包含送出圖示或特定屬性的按鈕
-        const geminiBtn = document.querySelector(
-            'button[aria-label*="傳送"], button[aria-label*="發送"], button[aria-label*="Send"], ' +
-            '.send-button-container button, button.send-button, ' +
-            'rich-textarea ~ * button[aria-label*="提示"], ' +
-            'button:has(mat-icon[fonticon*="send"]), button:has(span[data-icon="send"])'
-        );
-        return geminiBtn;
+        // Gemini: 鎖定輸入框附近的送出按鈕，避開側邊欄與選單三點按鈕
+        if (inputEl) {
+            const bottomBar = inputEl.closest('.input-area, .bottom-container, form, rich-textarea-container') || inputEl.parentElement;
+            if (bottomBar) {
+                const candidate = bottomBar.querySelector('button[aria-label*="傳送"], button[aria-label*="發送"], button[aria-label*="Send"], .send-button-container button, button.send-button, button:has(mat-icon[fonticon*="send"]), button:has(span[data-icon="send"])');
+                if (candidate && !candidate.closest('mat-action-list, [role="menu"], bard-sidenav, .history-container')) {
+                    return candidate;
+                }
+            }
+        }
+        const candidates = Array.from(document.querySelectorAll('button[aria-label*="傳送"], button[aria-label*="發送"], button[aria-label*="Send"], .send-button-container button, button.send-button, button:has(mat-icon[fonticon*="send"]), button:has(span[data-icon="send"])'));
+        const validBtn = candidates.find(btn => !btn.closest('mat-action-list, [role="menu"], bard-sidenav, .side-nav, [class*="history"], [class*="sidebar"]'));
+        return validBtn || null;
     }
     async function submitToLLM(text) {
         const inputEl = getInputElement();
@@ -579,38 +584,43 @@
             cleanText = cleanText.slice(1, -1).trim();
         }
 
-        try {
-            const parsed = JSON.parse(cleanText);
-            if (isValidToolPayload(parsed)) return parsed;
-        } catch (e) {}
+        function tryParsePayload(jsonStr) {
+            if (!jsonStr) return null;
+            try {
+                const res = JSON.parse(jsonStr);
+                if (isValidToolPayload(res)) return res;
+            } catch (e) {}
+
+            try {
+                const sanitized = jsonStr.replace(/"((?:[^"\\]|\\.)*)"/gs, (match, inner) => {
+                    const fixed = inner
+                        .replace(/\r?\n/g, '\\n')
+                        .replace(/\t/g, '\\t');
+                    return `"${fixed}"`;
+                });
+                const res = JSON.parse(sanitized);
+                if (isValidToolPayload(res)) return res;
+            } catch (e) {}
+            return null;
+        }
+
+        const directParsed = tryParsePayload(cleanText);
+        if (directParsed) return directParsed;
 
         const firstBracket = cleanText.indexOf('[');
         const lastBracket = cleanText.lastIndexOf(']');
-        const firstBrace = cleanText.indexOf('{');
-        const lastBrace = cleanText.lastIndexOf('}');
-
-        if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+        if (firstBracket !== -1 && lastBracket > firstBracket) {
             const candidateArr = cleanText.substring(firstBracket, lastBracket + 1);
-            try {
-                const parsedArr = JSON.parse(candidateArr);
-                if (isValidToolPayload(parsedArr)) return parsedArr;
-            } catch (e) {}
+            const parsedArr = tryParsePayload(candidateArr);
+            if (parsedArr) return parsedArr;
         }
 
-        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        const firstBrace = cleanText.indexOf('{');
+        const lastBrace = cleanText.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace > firstBrace) {
             const candidateObj = cleanText.substring(firstBrace, lastBrace + 1);
-            try {
-                const parsedObj = JSON.parse(candidateObj);
-                if (isValidToolPayload(parsedObj)) return parsedObj;
-            } catch (e) {}
-
-            try {
-                const sanitized = candidateObj.replace(/"(?:[^"\\]|\\.)*"/gs, (match) => {
-                    return match.replace(/\r/g, '\\r').replace(/\n/g, '\\n').replace(/\t/g, '\\t');
-                });
-                const parsedSanitized = JSON.parse(sanitized);
-                if (isValidToolPayload(parsedSanitized)) return parsedSanitized;
-            } catch (e) {}
+            const parsedObj = tryParsePayload(candidateObj);
+            if (parsedObj) return parsedObj;
         }
 
         return null;

@@ -16,6 +16,7 @@ from search_ops import (
     search_codebase,
     find_references
 )
+from job_manager import start_async_job, poll_job
 
 async def patch_and_test_file(path: str, target: str, replacement: str, test_command: str, timeout: int = DEFAULT_TIMEOUT_SEC, auto_rollback: bool = False) -> dict:
     """

@@ -22,7 +22,9 @@ SUPPORTED_TOOLS = [
     "search_codebase",
     "find_references",
     "capture_memory",
-    "list_tool"
+    "list_tool",
+    "execute_async",
+    "poll_job_status"
 ]
 
 TOOL_HANDLERS = {}
@@ -130,6 +132,23 @@ TOOL_CATALOG = {
             "description": "核心管控入口，支援 category 條件查詢",
             "parameters": {
                 "category": {"type": "str", "required": False, "default": "", "description": "指定分類 (core, search, git, system)，為空時列出全部"}
+            }
+        },
+        {
+            "name": "execute_async",
+            "description": "在背景非同步執行長耗時指令 (如回測、參數搜尋)，立即回傳 job_id 與日誌路徑，不阻塞工作階段",
+            "parameters": {
+                "command": {"type": "str", "required": True, "description": "要執行的 Shell 指令"},
+                "job_name": {"type": "str", "required": False, "default": "", "description": "工作識別名稱或標籤"},
+                "log_file": {"type": "str", "required": False, "default": "", "description": "自訂日誌檔案相對路徑"},
+                "notify_on_complete": {"type": "bool", "required": False, "default": True, "description": "工作完成時是否自動寫入事件收件箱通知 Agent"}
+            }
+        },
+        {
+            "name": "poll_job_status",
+            "description": "主動查詢背景非同步工作的執行進度、狀態與日誌尾端內容",
+            "parameters": {
+                "job_id": {"type": "str", "required": True, "description": "欲查詢的 job_id"}
             }
         }
     ],

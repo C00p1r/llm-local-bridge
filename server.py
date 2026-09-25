@@ -73,7 +73,18 @@ async def get_context(token: str = Depends(verify_token)):
     return {
         "status": "success",
         "snapshot": snapshot,
-        "context_prompt": prompt_text
+        "context_prompt": prompt_text,
+        "prompt_injection": prompt_text
+    }
+
+@app.get("/events/poll")
+async def poll_events(token: str = Depends(verify_token)):
+    """輪詢並取出待通知的背景事件 (先進先出並清空已讀取項目)"""
+    import job_manager
+    events = job_manager.get_and_clear_events()
+    return {
+        "status": "success",
+        "events": events
     }
 
 # 註冊模組化工具 handler

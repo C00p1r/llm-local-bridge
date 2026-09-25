@@ -129,3 +129,24 @@ def register_core_handlers():
             "tools": TOOL_CATALOG,
             "exit_code": 0
         }
+
+    @register_tool("execute_async")
+    async def _handle_execute_async(params: Dict[str, Any]):
+        import job_manager
+        cmd = params.get("command", "").strip()
+        if cmd.startswith("git ") or cmd == "git":
+            return {
+                "status": "error",
+                "output": "[Bridge 格式防護] 禁止透過 execute_async 執行 git 指令。",
+                "exit_code": -1
+            }
+        job_name = params.get("job_name", "")
+        log_file = params.get("log_file", "")
+        notify = params.get("notify_on_complete", True)
+        return job_manager.start_async_job(cmd, job_name=job_name, log_file=log_file, notify_on_complete=notify)
+
+    @register_tool("poll_job_status")
+    async def _handle_poll_job_status(params: Dict[str, Any]):
+        import job_manager
+        job_id = params.get("job_id", "").strip()
+        return job_manager.poll_job(job_id)
