@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         LLM Local Bridge Agent (v4.15.1 - Chrome & Gemini Fix)
+// @name         LLM Local Bridge Agent (v4.15.2 - Robust JSON & Gemini Fix)
 // @namespace    https://local.bridge/
-// @version      4.15.1
+// @version      4.15.2
 // @description  LLM Local Bridge supporting ChatGPT, Gemini, and DeepSeek Web
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
@@ -29,7 +29,7 @@
     window.__llm_local_bridge_loaded__ = true;
 
     console.log(
-        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.15.1 (Multi-Platform: ChatGPT / Gemini / DeepSeek)',
+        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.15.2 (Multi-Platform: ChatGPT / Gemini / DeepSeek)',
         'color:#22c55e;font-weight:bold;font-size:14px;'
     );
 
@@ -205,20 +205,30 @@
     let stableToolCount = 0;
     let isProgrammaticSubmit = false;
 
-    // --- JSON 容錯解析器 (修復遺失函數) ---
+    // --- 三軌容錯 JSON 解析架構與跳脫字符修復 ---
+    function unescapeJsonString(str) {
+        return str
+            .replace(/\\n/g, '\n')
+            .replace(/\\r/g, '\r')
+            .replace(/\\t/g, '\t')
+            .replace(/\\"/g, '"')
+            .replace(/\\\\/g, '\\');
+    }
+
     function parseMultiLineJson(rawText) {
         if (!rawText) return null;
         let cleaned = rawText.trim();
-        // 移除 Markdown codeblock 標籤
+        // 移除 Markdown codeblock 與 HTML 標籤殘留
         cleaned = cleaned.replace(/^```[a-zA-Z0-9_-]*\s*/i, '').replace(/```\s*$/i, '').trim();
+        cleaned = cleaned.replace(/<[^>]+>/g, '');
 
-        // 嘗試直接 parse
+        // 軌道 1: 原生標準 JSON.parse
         try {
             const parsed = JSON.parse(cleaned);
             if (isValidToolPayload(parsed)) return parsed;
         } catch (_) {}
 
-        // 若直接 parse 失敗，嘗試擷取最外層的 [ ... ] 或 { ... }
+        // 軌道 2: 邊界括號定向擷取 (支援批次陣列 [ ... ] 與單一物件 { ... })
         const firstBracket = cleaned.indexOf('[');
         const lastBracket = cleaned.lastIndexOf(']');
         if (firstBracket !== -1 && lastBracket > firstBracket) {
@@ -238,6 +248,28 @@
                 if (isValidToolPayload(parsed)) return parsed;
             } catch (_) {}
         }
+
+        // 軌道 3: 正規式屬性定向抽取（容忍未轉義雙引號或換行污染）
+        try {
+            const toolMatch = cleaned.match(/"tool"\s*:\s*"([a-zA-Z0-9_-]+)"/);
+            if (toolMatch) {
+                const tool = toolMatch[1];
+                const paramsMatch = cleaned.match(/"parameters"\s*:\s*(\{[\s\S]*?\})/);
+                let parameters = {};
+                if (paramsMatch) {
+                    try {
+                        parameters = JSON.parse(paramsMatch[1]);
+                    } catch (_) {
+                        // 嘗試修復跳脫字符再 parse
+                        try {
+                            parameters = JSON.parse(unescapeJsonString(paramsMatch[1]));
+                        } catch (__) {}
+                    }
+                }
+                const reconstructed = { tool, parameters };
+                if (isValidToolPayload(reconstructed)) return reconstructed;
+            }
+        } catch (_) {}
 
         return null;
     }
