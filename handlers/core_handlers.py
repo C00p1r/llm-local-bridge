@@ -58,7 +58,7 @@ def register_core_handlers():
     @register_tool("set_active_project")
     async def _handle_set_active_project(params: Dict[str, Any]):
         from config import set_active_project, get_scoped_workspace_dir
-        project_path = params.get("project_path", "")
+        project_path = params.get("project_path") or params.get("project", "")
         res = set_active_project(project_path)
         if res.get("status") == "success":
             memory_manager.schedule_background_snapshot()

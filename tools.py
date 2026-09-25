@@ -45,6 +45,11 @@ def validate_tool_parameters(tool_name: str, params: dict) -> tuple[bool, str]:
     
     expected_params = tool_def.get("parameters", {})
     missing_keys = []
+    # 針對別名做參數映射與相容處理
+    if tool_name == "set_active_project":
+        if "project_path" not in params and "project" in params:
+            params["project_path"] = params["project"]
+
     for param_name, param_meta in expected_params.items():
         if param_meta.get("required", False):
             val = params.get(param_name)
@@ -289,7 +294,8 @@ TOOL_CATALOG = {
             "name": "set_active_project",
             "description": "釘選當前工作子專案路徑，後續所有指令與工具邊界將自動切換至該專案下 (避免路徑漂移與跨專案誤操作)",
             "parameters": {
-                "project_path": {"type": "str", "required": True, "description": "子專案相對目錄 (傳入空字串或 '.' 則重設回工作區根目錄)"}
+                "project_path": {"type": "str", "required": False, "description": "子專案相對目錄 (傳入空字串或 '.' 則重設回工作區根目錄，亦支援別名 'project')"},
+                "project": {"type": "str", "required": False, "description": "project_path 的別名參數"}
             }
         },
         {

@@ -1,5 +1,12 @@
 # Changelog & Release Notes
 
+## v4.15.2 (2026-09-25)
+- **Parameter Alias Support for `set_active_project` (`handlers/core_handlers.py`, `tools.py`)**:
+  - 支援 `project` 作為 `project_path` 的別名，LLM 傳入 `project` 或 `project_path` 皆可正確辨識與校驗。
+  - 參數校驗器 `validate_tool_parameters` 自動進行別名正規化，防止參數缺少報錯。
+- **Gemini Send Button Selector Precision (`tampermonkey_script.js`)**:
+  - 限制發送按鈕搜尋範圍優先錨定至輸入框容器，並主動排除側邊欄導覽列與對話歷史項目中的動作按鈕。
+
 ## v4.15.0 (2026-09-20)
 - **Scoped Project Pinning & Dynamic Sandbox Boundary (`config.py`, `handlers/core_handlers.py`, `tools.py`)**:
   - 新增 `set_active_project` 與 `get_workspace_state` 工具，支援在多專案工作區動態切換 active project。
