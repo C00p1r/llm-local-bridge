@@ -549,29 +549,36 @@
 
         // Gemini: 精確鎖定輸入區塊附近的送出按鈕，嚴格排除側邊欄與對話歷史操作選單
         if (inputEl) {
-            const inputContainer = inputEl.closest('rich-textarea, .input-area, form, [class*="input-container"], [class*="bottom-container"]') || inputEl.parentElement;
+            // 1. 優先從 inputArea 祖先容器尋找
+            const inputContainer = inputEl.closest('.input-area, [class*="input-box"], [class*="input-container"], [class*="bottom-container"], form') ||
+                                   inputEl.closest('rich-textarea')?.parentElement;
             if (inputContainer) {
-                const nearbySend = inputContainer.querySelector(
-                    'button[aria-label*="傳送"], button[aria-label*="發送"], button[aria-label*="Send"], ' +
+                const directSend = inputContainer.querySelector(
                     'button.send-button, .send-button-container button, ' +
+                    'button[aria-label*="傳送"], button[aria-label*="發送"], button[aria-label*="Send"], ' +
                     'button:has(mat-icon[fonticon*="send"]), button:has(span[data-icon="send"])'
                 );
-                if (nearbySend && !nearbySend.closest('bard-sidenav, [class*="sidebar"], [class*="side-nav"], nav, [role="navigation"]')) {
-                    return nearbySend;
+                if (directSend && !directSend.closest('bard-sidenav, [class*="side"], [class*="history"], nav, [role="navigation"]')) {
+                    return directSend;
                 }
             }
         }
 
-        const geminiCandidates = Array.from(document.querySelectorAll(
+        // 2. 嚴格限定在主對話區域或底部區域尋找，堅決不在導覽側邊欄或側邊抽屜內搜尋
+        const mainArea = document.querySelector('chat-window, main, [role="main"], .chat-history, [class*="main-container"]') || document.body;
+        const geminiCandidates = Array.from(mainArea.querySelectorAll(
             'button.send-button, .send-button-container button, ' +
-            'rich-textarea ~ * button[aria-label*="提示"], ' +
-            'button:has(mat-icon[fonticon*="send"]), button:has(span[data-icon="send"]), ' +
-            'button[aria-label*="傳送"], button[aria-label*="發送"], button[aria-label*="Send"]'
+            'button[aria-label*="傳送"], button[aria-label*="發送"], button[aria-label*="Send"], ' +
+            'button:has(mat-icon[fonticon*="send"]), button:has(span[data-icon="send"])'
         ));
 
         for (const btn of geminiCandidates) {
-            // 排除側邊欄、導覽列與對話歷史清單中的按鈕（例如三點選單、歷史動作）
-            if (btn.closest('bard-sidenav, [class*="sidebar"], [class*="side-nav"], [class*="conversation"], nav, [role="navigation"], [class*="history"]')) {
+            // 排除側邊欄、導覽列與對話歷史清單中的按鈕（包含更多操作三點按鈕、導覽按鈕等）
+            if (btn.closest('bard-sidenav, [class*="sidebar"], [class*="side-nav"], [class*="conversation"], nav, [role="navigation"], [class*="history"], [class*="menu"], [aria-haspopup="menu"]')) {
+                continue;
+            }
+            const label = (btn.getAttribute('aria-label') || btn.title || '').toLowerCase();
+            if (label.includes('more') || label.includes('更多') || label.includes('選單') || label.includes('menu')) {
                 continue;
             }
             return btn;

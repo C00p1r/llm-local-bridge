@@ -129,8 +129,8 @@ def start_async_job(command: str, job_name: Optional[str] = None, log_file: Opti
         "-d",
         "--name", container_name,
         "--network", "none",
-        "--cpus", "2.0",
-        "--memory", "1g",
+        "--cpus", "6.0",
+        "--memory", "6g",
         *(_get_docker_user_args()),
         "-v", f"{workspace_abs}:/workspace:rw",
         "-w", container_workdir,
@@ -214,9 +214,9 @@ def poll_job(job_id: str) -> dict:
         "job_name": job["job_name"],
         "job_status": job["status"],
         "pid": job["pid"],
-        "exit_code": job.get("exit_code"),
+        "exit_code": 0,
+        "job_exit_code": job.get("exit_code"),
         "elapsed_seconds": job.get("elapsed_seconds"),
         "summary_log": tail,
-        "output": f"工作狀態: {job['status']} (PID: {job['pid']})\n最新輸出日誌:\n{tail}",
-        "exit_code_status": 0
+        "output": f"工作狀態: {job['status']} (PID: {job['pid']})\n最新輸出日誌:\n{tail}"
     }
