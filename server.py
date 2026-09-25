@@ -155,7 +155,7 @@ async def execute_tool(req: Union[ExecuteRequest, List[ExecuteRequest]], token: 
                 # Fail-Fast 中斷檢查
                 status = res.get("status")
                 exit_code = res.get("exit_code", 0)
-                if status not in ["success", "ok"] or exit_code != 0:
+                if status not in ["success", "ok", "STARTED"] or exit_code != 0:
                     print(f"[Bridge] 批次步驟 [{idx + 1}] 失敗，中斷後續執行。")
                     if has_file_modifications:
                         memory_manager.schedule_background_snapshot()

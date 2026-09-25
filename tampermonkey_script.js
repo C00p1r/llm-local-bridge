@@ -674,28 +674,54 @@
         return null;
     }
 
+    // 獨立背景事件佇列與平滑輪詢（做法 1：等待串流與對話就緒後立即推入）
+    const pendingJobEvents = [];
+    let isEventFlushing = false;
+
+    async function flushPendingEvents() {
+        if (isEventFlushing || isExecuting || isStreaming() || pendingJobEvents.length === 0) return;
+        const now = Date.now();
+        if (now - lastExecutionTime < RESULT_COOLDOWN_MS) return;
+
+        isEventFlushing = true;
+        isExecuting = true;
+        try {
+            while (pendingJobEvents.length > 0 && !isStreaming()) {
+                const ev = pendingJobEvents.shift();
+                console.log('[Bridge] 正在將背景事件平滑注入對話:', ev);
+                const notifText = `[BACKGROUND_JOB_EVENT]\n\`\`\`json\n${JSON.stringify(ev, null, 2)}\n\`\`\``;
+                await submitToLLM(notifText);
+                lastExecutionTime = Date.now();
+                await new Promise(r => setTimeout(r, 1500));
+            }
+        } catch (err) {
+            console.error('[Bridge] 推送背景事件至對話失敗:', err);
+        } finally {
+            isExecuting = false;
+            isEventFlushing = false;
+        }
+    }
+
+    // 獨立常態輪詢定時器 (每 2 秒向後端取得最新完成通知)
+    setInterval(async () => {
+        try {
+            const events = await pollEventsFromBackend();
+            if (events && events.length > 0) {
+                console.log(`[Bridge] 輪詢抓取到 ${events.length} 個背景事件，加入待處理佇列`);
+                pendingJobEvents.push(...events);
+            }
+        } catch (err) {
+            console.error('[Bridge] 獨立輪詢背景事件異常:', err);
+        }
+        await flushPendingEvents();
+    }, 2000);
+
     setInterval(async () => {
         const now = Date.now();
         if (isExecuting || isStreaming() || (now - lastExecutionTime < RESULT_COOLDOWN_MS)) return;
         createMetricsUI();
-        // 檢查背景非同步任務完成事件
-        try {
-            const events = await pollEventsFromBackend();
-            if (events && events.length > 0) {
-                console.log(`[Bridge] 收到 ${events.length} 個背景完成事件，準備推送到對話`);
-                isExecuting = true;
-                for (const ev of events) {
-                    const notifText = `[BACKGROUND_JOB_EVENT]\n\`\`\`json\n${JSON.stringify(ev, null, 2)}\n\`\`\``;
-                    await submitToLLM(notifText);
-                    await new Promise(r => setTimeout(r, 1200));
-                }
-                lastExecutionTime = Date.now();
-                isExecuting = false;
-                return;
-            }
-        } catch (err) {
-            console.error('[Bridge] 輪詢背景事件異常:', err);
-        }
+        await flushPendingEvents();
+        if (isExecuting) return;
 
         const peekTarget = getNextToolCall(true);
 

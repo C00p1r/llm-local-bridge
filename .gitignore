@@ -7,3 +7,4 @@ my_workspace
 my_workspace/*
 __pycache__
 __pycache__/*
+.bridge_logs/
