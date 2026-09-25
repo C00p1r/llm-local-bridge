@@ -123,6 +123,27 @@
      "parameters": {"category": "git"}
    }
 
+8. execute_async: 背景非同步執行長耗時指令 (如大量樣本回測、參數搜尋)，立即回傳 job_id 與日誌路徑。
+   參數:
+   - command (string, 必填): 要執行的 Shell 指令。
+   - job_name (string, 選填): 工作識別名稱。
+   - log_file (string, 選填): 自訂日誌輸出路徑。
+   - notify_on_complete (bool, 選填): 工作完成時是否自動注入通知 (預設 true)。
+   範例:
+   {
+     "tool": "execute_async",
+     "parameters": {"command": "python main.py --samples 200", "job_name": "broad_search"}
+   }
+
+9. poll_job_status: 主動查詢背景任務狀態與最新輸出日誌尾端內容。
+   參數:
+   - job_id (string, 必填): 工作 ID。
+   範例:
+   {
+     "tool": "poll_job_status",
+     "parameters": {"job_id": "job_12345"}
+   }
+
 ### 二、 進階工具分類索引 (Advanced Tools - 請透過 list_tool 查詢詳細參數)
 
 - **search 群組 (專案感知與搜尋)**:
@@ -349,7 +370,34 @@
             });
         });
     }
-
+    function pollEventsFromBackend() {
+        return new Promise((resolve) => {
+            if (!sessionToken) return resolve([]);
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: `${BASE_URL}/events/poll`,
+                headers: {
+                    'Authorization': `Bearer ${sessionToken}`
+                },
+                timeout: 3000,
+                onload: function (res) {
+                    if (res.status === 200) {
+                        try {
+                            const data = JSON.parse(res.responseText);
+                            resolve(data.events || []);
+                        } catch (e) {
+                            resolve([]);
+                        }
+                    } else {
+                        resolve([]);
+                    }
+                },
+                onerror: function () {
+                    resolve([]);
+                }
+            });
+        });
+    }
     function fetchContextPrompt() {
         return new Promise((resolve) => {
             if (!sessionToken) {
@@ -460,19 +508,14 @@
             return null;
         }
 
-        // Gemini: 鎖定輸入框附近的送出按鈕，避開側邊欄與選單三點按鈕
-        if (inputEl) {
-            const bottomBar = inputEl.closest('.input-area, .bottom-container, form, rich-textarea-container') || inputEl.parentElement;
-            if (bottomBar) {
-                const candidate = bottomBar.querySelector('button[aria-label*="傳送"], button[aria-label*="發送"], button[aria-label*="Send"], .send-button-container button, button.send-button, button:has(mat-icon[fonticon*="send"]), button:has(span[data-icon="send"])');
-                if (candidate && !candidate.closest('mat-action-list, [role="menu"], bard-sidenav, .history-container')) {
-                    return candidate;
-                }
-            }
-        }
-        const candidates = Array.from(document.querySelectorAll('button[aria-label*="傳送"], button[aria-label*="發送"], button[aria-label*="Send"], .send-button-container button, button.send-button, button:has(mat-icon[fonticon*="send"]), button:has(span[data-icon="send"])'));
-        const validBtn = candidates.find(btn => !btn.closest('mat-action-list, [role="menu"], bard-sidenav, .side-nav, [class*="history"], [class*="sidebar"]'));
-        return validBtn || null;
+        // Gemini: 精確鎖定包含送出圖示或特定屬性的按鈕
+        const geminiBtn = document.querySelector(
+            'button[aria-label*="傳送"], button[aria-label*="發送"], button[aria-label*="Send"], ' +
+            '.send-button-container button, button.send-button, ' +
+            'rich-textarea ~ * button[aria-label*="提示"], ' +
+            'button:has(mat-icon[fonticon*="send"]), button:has(span[data-icon="send"])'
+        );
+        return geminiBtn;
     }
     async function submitToLLM(text) {
         const inputEl = getInputElement();
@@ -558,73 +601,7 @@
         return true;
     }
 
-    function parseMultiLineJson(rawText) {
-        const blockMatch = rawText.match(/```(?:tool_call|bridge):([a-zA-Z0-9_-]+)\s*\n([\s\S]*?)\n```/);
-        if (blockMatch) {
-            const action = blockMatch[1];
-            const rawBody = blockMatch[2].trim();
-            if (action === 'execute_command') {
-                return { tool: 'execute_command', parameters: { command: rawBody } };
-            }
-            if (action === 'file_write' || action === 'write_file') {
-                const firstNewline = rawBody.indexOf('\n');
-                const path = rawBody.substring(0, firstNewline).replace(/^path:\s*/i, '').trim();
-                const content = rawBody.substring(firstNewline + 1);
-                return { tool: 'file_write', parameters: { path, content } };
-            }
-            if (action === 'run_script') {
-                return { tool: 'run_script', parameters: { code: rawBody, language: 'python' } };
-            }
-        }
-
-        let cleanText = rawText.trim();
-        cleanText = cleanText.replace(/^```[a-zA-Z0-9_-]*\s*/i, '').replace(/```$/i, '').trim();
-
-        if (cleanText.startsWith('"') && cleanText.endsWith('"')) {
-            cleanText = cleanText.slice(1, -1).trim();
-        }
-
-        function tryParsePayload(jsonStr) {
-            if (!jsonStr) return null;
-            try {
-                const res = JSON.parse(jsonStr);
-                if (isValidToolPayload(res)) return res;
-            } catch (e) {}
-
-            try {
-                const sanitized = jsonStr.replace(/"((?:[^"\\]|\\.)*)"/gs, (match, inner) => {
-                    const fixed = inner
-                        .replace(/\r?\n/g, '\\n')
-                        .replace(/\t/g, '\\t');
-                    return `"${fixed}"`;
-                });
-                const res = JSON.parse(sanitized);
-                if (isValidToolPayload(res)) return res;
-            } catch (e) {}
-            return null;
-        }
-
-        const directParsed = tryParsePayload(cleanText);
-        if (directParsed) return directParsed;
-
-        const firstBracket = cleanText.indexOf('[');
-        const lastBracket = cleanText.lastIndexOf(']');
-        if (firstBracket !== -1 && lastBracket > firstBracket) {
-            const candidateArr = cleanText.substring(firstBracket, lastBracket + 1);
-            const parsedArr = tryParsePayload(candidateArr);
-            if (parsedArr) return parsedArr;
-        }
-
-        const firstBrace = cleanText.indexOf('{');
-        const lastBrace = cleanText.lastIndexOf('}');
-        if (firstBrace !== -1 && lastBrace > firstBrace) {
-            const candidateObj = cleanText.substring(firstBrace, lastBrace + 1);
-            const parsedObj = tryParsePayload(candidateObj);
-            if (parsedObj) return parsedObj;
-        }
-
-        return null;
-    }
+    
 
     function isValidToolPayload(payload) {
         if (!payload) return false;
@@ -701,13 +678,26 @@
         const now = Date.now();
         if (isExecuting || isStreaming() || (now - lastExecutionTime < RESULT_COOLDOWN_MS)) return;
         createMetricsUI();
+        // 檢查背景非同步任務完成事件
+        try {
+            const events = await pollEventsFromBackend();
+            if (events && events.length > 0) {
+                console.log(`[Bridge] 收到 ${events.length} 個背景完成事件，準備推送到對話`);
+                isExecuting = true;
+                for (const ev of events) {
+                    const notifText = `[BACKGROUND_JOB_EVENT]\n\`\`\`json\n${JSON.stringify(ev, null, 2)}\n\`\`\``;
+                    await submitToLLM(notifText);
+                    await new Promise(r => setTimeout(r, 1200));
+                }
+                lastExecutionTime = Date.now();
+                isExecuting = false;
+                return;
+            }
+        } catch (err) {
+            console.error('[Bridge] 輪詢背景事件異常:', err);
+        }
 
         const peekTarget = getNextToolCall(true);
-        if (!peekTarget) {
-            lastSeenToolText = '';
-            stableToolCount = 0;
-            return;
-        }
 
         const currentText = (peekTarget.element && (peekTarget.element.innerText || peekTarget.element.textContent)) || '';
         if (currentText === lastSeenToolText && currentText.length > 0) {

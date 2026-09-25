@@ -3,5 +3,7 @@
 .venv/*
 workspace
 workspace/*
+my_workspace
+my_workspace/*
 __pycache__
 __pycache__/*
