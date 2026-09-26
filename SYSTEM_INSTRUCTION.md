@@ -88,6 +88,46 @@
      "parameters": {"category": "git"}
    }
 
+8. execute_async: 背景非同步執行長耗時指令 (如大量樣本回測、參數搜尋)，立即回傳 job_id 與日誌路徑。
+   參數:
+   - command (string, 必填): 要執行的 Shell 指令。
+   - job_name (string, 選填): 工作識別名稱。
+   - log_file (string, 選填): 自訂日誌輸出路徑。
+   - timeout (int, 選填): 任務逾時限制秒數 (超時自動終止容器並標記 TIMEOUT)。
+   - notify_on_complete (bool, 選填): 工作完成時是否自動注入通知 (預設 true)。
+   範例:
+   {
+     "tool": "execute_async",
+     "parameters": {"command": "python main.py --samples 200", "job_name": "broad_search", "timeout": 3600}
+   }
+
+9. poll_job_status: 主動查詢背景任務狀態、累計耗時 (elapsed_time) 與最新輸出日誌尾端內容。
+   參數:
+   - job_id (string, 必填): 工作 ID。
+   範例:
+   {
+     "tool": "poll_job_status",
+     "parameters": {"job_id": "job_12345"}
+   }
+
+10. kill_job: 強制中斷並清理指定背景非同步執行的任務與沙盒容器。
+   參數:
+   - job_id (string, 必填): 欲終止的 job_id。
+   範例:
+   {
+     "tool": "kill_job",
+     "parameters": {"job_id": "job_12345"}
+   }
+
+11. list_jobs: 列出所有背景非同步任務清單、各任務運行狀態與累計耗時。
+   參數:
+   - limit (int, 選填): 最多回傳比數 (預設 10)。
+   範例:
+   {
+     "tool": "list_jobs",
+     "parameters": {"limit": 10}
+   }
+
 ### 二、 進階工具分類索引 (Advanced Tools - 請透過 list_tool 查詢詳細參數)
 
 - **search 群組 (專案感知與搜尋)**:

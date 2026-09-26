@@ -143,10 +143,32 @@ def register_core_handlers():
         job_name = params.get("job_name", "")
         log_file = params.get("log_file", "")
         notify = params.get("notify_on_complete", True)
-        return job_manager.start_async_job(cmd, job_name=job_name, log_file=log_file, notify_on_complete=notify)
+        timeout = params.get("timeout")
+        if timeout is not None:
+            try:
+                timeout = int(timeout)
+            except Exception:
+                timeout = None
+        return job_manager.start_async_job(cmd, job_name=job_name, log_file=log_file, notify_on_complete=notify, timeout=timeout)
 
     @register_tool("poll_job_status")
     async def _handle_poll_job_status(params: Dict[str, Any]):
         import job_manager
         job_id = params.get("job_id", "").strip()
         return job_manager.poll_job(job_id)
+
+    @register_tool("kill_job")
+    async def _handle_kill_job(params: Dict[str, Any]):
+        import job_manager
+        job_id = params.get("job_id", "").strip()
+        return job_manager.stop_async_job(job_id)
+
+    @register_tool("list_jobs")
+    async def _handle_list_jobs(params: Dict[str, Any]):
+        import job_manager
+        limit = params.get("limit", 10)
+        try:
+            limit = int(limit)
+        except Exception:
+            limit = 10
+        return job_manager.list_async_jobs(limit=limit)

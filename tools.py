@@ -146,14 +146,29 @@ TOOL_CATALOG = {
                 "command": {"type": "str", "required": True, "description": "要執行的 Shell 指令"},
                 "job_name": {"type": "str", "required": False, "default": "", "description": "工作識別名稱或標籤"},
                 "log_file": {"type": "str", "required": False, "default": "", "description": "自訂日誌檔案相對路徑"},
+                "timeout": {"type": "int", "required": False, "default": None, "description": "任務最大執行秒數超時保護 (超時自動 kill)"},
                 "notify_on_complete": {"type": "bool", "required": False, "default": True, "description": "工作完成時是否自動寫入事件收件箱通知 Agent"}
             }
         },
         {
             "name": "poll_job_status",
-            "description": "主動查詢背景非同步工作的執行進度、狀態與日誌尾端內容",
+            "description": "主動查詢背景非同步工作的執行進度、狀態、已耗時與日誌尾端內容",
             "parameters": {
                 "job_id": {"type": "str", "required": True, "description": "欲查詢的 job_id"}
+            }
+        },
+        {
+            "name": "kill_job",
+            "description": "強制中斷並清理指定背景非同步執行的任務與沙盒容器",
+            "parameters": {
+                "job_id": {"type": "str", "required": True, "description": "欲強制中斷的 job_id"}
+            }
+        },
+        {
+            "name": "list_jobs",
+            "description": "列出背景非同步任務清單、各任務運行狀態與累計耗時",
+            "parameters": {
+                "limit": {"type": "int", "required": False, "default": 10, "description": "最多顯示筆數"}
             }
         }
     ],
