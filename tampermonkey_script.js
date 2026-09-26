@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         LLM Local Bridge Agent (v4.15.2 - Robust JSON & Gemini Fix)
+// @name         LLM Local Bridge Agent (v4.15.3 - Preserve Angle Brackets Fix)
 // @namespace    https://local.bridge/
-// @version      4.15.2
+// @version      4.15.3
 // @description  LLM Local Bridge supporting ChatGPT, Gemini, and DeepSeek Web
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
@@ -29,7 +29,7 @@
     window.__llm_local_bridge_loaded__ = true;
 
     console.log(
-        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.15.2 (Multi-Platform: ChatGPT / Gemini / DeepSeek)',
+        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.15.3 (Multi-Platform: ChatGPT / Gemini / DeepSeek)',
         'color:#22c55e;font-weight:bold;font-size:14px;'
     );
 
@@ -220,7 +220,6 @@
         let cleaned = rawText.trim();
         // 移除 Markdown codeblock 與 HTML 標籤殘留
         cleaned = cleaned.replace(/^```[a-zA-Z0-9_-]*\s*/i, '').replace(/```\s*$/i, '').trim();
-        cleaned = cleaned.replace(/<[^>]+>/g, '');
 
         // 軌道 1: 原生標準 JSON.parse
         try {
