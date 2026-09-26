@@ -333,12 +333,15 @@ def stop_async_job(job_id: str) -> dict:
     with _lock:
         job["status"] = "KILLED"
     
-    # 強制 kill 容器
+    # 強制 kill 容器 (若環境支援 docker 則嘗試終止與移除)
     if container_name:
-        res = subprocess.run(["docker", "kill", container_name], capture_output=True, text=True)
-        subprocess.run(["docker", "rm", "-f", container_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        if res.returncode != 0 and "No such container" not in res.stderr:
-            print(f"[Bridge Async] kill 容器失敗或已終止: {res.stderr}")
+        try:
+            res = subprocess.run(["docker", "kill", container_name], capture_output=True, text=True)
+            subprocess.run(["docker", "rm", "-f", container_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if res.returncode != 0 and "No such container" not in res.stderr:
+                print(f"[Bridge Async] kill 容器失敗或已終止: {res.stderr}")
+        except (FileNotFoundError, Exception) as e:
+            print(f"[Bridge Async] 調用 docker kill 略過 (環境無 Docker 或已終止): {e}")
 
     # 更新耗時資訊
     start_ts = job.get("start_timestamp")
