@@ -11,11 +11,13 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 # ── 系統工具層 ────────────────────────────────────────────
 # git: 版本控制（沙盒內唯讀用途）
-# ripgrep: search_codebase 極速檢索
+# ripgrep: search_codebase / grep_code 極速檢索
+# universal-ctags: C/Asm/多語言符號提取與 outline 生成
 # nodejs/npm: JS/TS 語法檢查與執行
 RUN apt-get update && apt-get install -y --no-install-recommends \
         git \
         ripgrep \
+        universal-ctags \
         curl \
         ca-certificates \
         nodejs \

@@ -73,18 +73,7 @@ async def get_context(token: str = Depends(verify_token)):
     return {
         "status": "success",
         "snapshot": snapshot,
-        "context_prompt": prompt_text,
-        "prompt_injection": prompt_text
-    }
-
-@app.get("/events/poll")
-async def poll_events(token: str = Depends(verify_token)):
-    """輪詢並取出待通知的背景事件 (先進先出並清空已讀取項目)"""
-    import job_manager
-    events = job_manager.get_and_clear_events()
-    return {
-        "status": "success",
-        "events": events
+        "context_prompt": prompt_text
     }
 
 # 註冊模組化工具 handler
@@ -155,7 +144,7 @@ async def execute_tool(req: Union[ExecuteRequest, List[ExecuteRequest]], token: 
                 # Fail-Fast 中斷檢查
                 status = res.get("status")
                 exit_code = res.get("exit_code", 0)
-                if status not in ["success", "ok", "STARTED"] or exit_code != 0:
+                if status not in ["success", "ok"] or exit_code != 0:
                     print(f"[Bridge] 批次步驟 [{idx + 1}] 失敗，中斷後續執行。")
                     if has_file_modifications:
                         memory_manager.schedule_background_snapshot()

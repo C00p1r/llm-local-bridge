@@ -19,12 +19,12 @@ SUPPORTED_TOOLS = [
     "git_clean",
     "list_dir",
     "get_outline",
+    "grep_code",
     "search_codebase",
+    "find_definition",
     "find_references",
     "capture_memory",
-    "list_tool",
-    "execute_async",
-    "poll_job_status"
+    "list_tool"
 ]
 
 TOOL_HANDLERS = {}
@@ -45,11 +45,6 @@ def validate_tool_parameters(tool_name: str, params: dict) -> tuple[bool, str]:
     
     expected_params = tool_def.get("parameters", {})
     missing_keys = []
-    # 針對別名做參數映射與相容處理
-    if tool_name == "set_active_project":
-        if "project_path" not in params and "project" in params:
-            params["project_path"] = params["project"]
-
     for param_name, param_meta in expected_params.items():
         if param_meta.get("required", False):
             val = params.get(param_name)
@@ -96,7 +91,7 @@ TOOL_CATALOG = {
         },
         {
             "name": "file_read",
-            "description": "結構化讀取檔案",
+            "description": "結構化讀取已知路徑與行號範圍的檔案。重要規範：嚴禁在不知道目標位置時逐一讀檔盲目導航；若要尋找特定函式、類別、變數或錯誤字串，必須優先使用 grep_code 或 find_definition。",
             "parameters": {
                 "path": {"type": "str", "required": True, "description": "檔案相對路徑"},
                 "start_line": {"type": "int", "required": False, "description": "起始行號 (從 1 開始)"},
@@ -138,38 +133,6 @@ TOOL_CATALOG = {
             "parameters": {
                 "category": {"type": "str", "required": False, "default": "", "description": "指定分類 (core, search, git, system)，為空時列出全部"}
             }
-        },
-        {
-            "name": "execute_async",
-            "description": "在背景非同步執行長耗時指令 (如回測、參數搜尋)，立即回傳 job_id 與日誌路徑，不阻塞工作階段",
-            "parameters": {
-                "command": {"type": "str", "required": True, "description": "要執行的 Shell 指令"},
-                "job_name": {"type": "str", "required": False, "default": "", "description": "工作識別名稱或標籤"},
-                "log_file": {"type": "str", "required": False, "default": "", "description": "自訂日誌檔案相對路徑"},
-                "timeout": {"type": "int", "required": False, "default": None, "description": "任務最大執行秒數超時保護 (超時自動 kill)"},
-                "notify_on_complete": {"type": "bool", "required": False, "default": True, "description": "工作完成時是否自動寫入事件收件箱通知 Agent"}
-            }
-        },
-        {
-            "name": "poll_job_status",
-            "description": "主動查詢背景非同步工作的執行進度、狀態、已耗時與日誌尾端內容",
-            "parameters": {
-                "job_id": {"type": "str", "required": True, "description": "欲查詢的 job_id"}
-            }
-        },
-        {
-            "name": "kill_job",
-            "description": "強制中斷並清理指定背景非同步執行的任務與沙盒容器",
-            "parameters": {
-                "job_id": {"type": "str", "required": True, "description": "欲強制中斷的 job_id"}
-            }
-        },
-        {
-            "name": "list_jobs",
-            "description": "列出背景非同步任務清單、各任務運行狀態與累計耗時",
-            "parameters": {
-                "limit": {"type": "int", "required": False, "default": 10, "description": "最多顯示筆數"}
-            }
         }
     ],
     "search": [
@@ -189,12 +152,39 @@ TOOL_CATALOG = {
             }
         },
         {
+            "name": "grep_code",
+            "description": "在程式碼庫中精準定位目標位置 (函式呼叫、字串、錯誤訊息、設定鍵)。【優先使用時機】當你不知道某個邏輯或符號存在於哪個檔案或哪一行時，第一步必須使用此工具，禁止逐檔盲讀。回傳包含檔名、行號、enclosing 符號與前後上下文。",
+            "parameters": {
+                "query": {"type": "str", "required": True, "description": "搜尋關鍵字或正則表達式"},
+                "path": {"type": "str", "required": False, "default": "", "description": "限定檢索的相對目錄路徑"},
+                "include_pattern": {"type": "str", "required": False, "default": "", "description": "檔案過濾 pattern (如 *.py, *.c)"},
+                "fixed_strings": {"type": "bool", "required": False, "default": False, "description": "設為 true 時作為字面字串查詢（搜尋含括號或點號等符號時推薦啟用）"},
+                "case_sensitive": {"type": "bool", "required": False, "default": None, "description": "大小寫敏感度：null 為 smart-case、true 為區分、false 為不區分"},
+                "context_lines": {"type": "int", "required": False, "default": 2, "description": "匹配行前後上下文行數 (預設 2)"},
+                "offset": {"type": "int", "required": False, "default": 0, "description": "分頁位移偏移量"},
+                "max_results": {"type": "int", "required": False, "default": 50, "description": "最多回傳結果數"}
+            }
+        },
+        {
+            "name": "find_definition",
+            "description": "精確尋找指定符號 (函式、類別、介面、Asm label) 的定義位置。當你需要閱讀或修改某個特定函式/類別，但不知道它定義在哪個檔案時優先使用。",
+            "parameters": {
+                "symbol": {"type": "str", "required": True, "description": "欲尋找定義的符號名稱 (如函式名、類別名、label)"},
+                "path": {"type": "str", "required": False, "default": "", "description": "搜尋範圍目錄 (預設全工作區)"},
+                "file_type": {"type": "str", "required": False, "default": "", "description": "限定副檔名 (如 py, c, h, s, inc)"}
+            }
+        },
+        {
             "name": "search_codebase",
-            "description": "全專案全文關鍵字與正則檢索",
+            "description": "[別名相容工具，等同 grep_code] 全專案全文關鍵字與正則檢索。",
             "parameters": {
                 "query": {"type": "str", "required": True, "description": "搜尋關鍵字或正則表達式"},
                 "path": {"type": "str", "required": False, "default": "", "description": "限定檢索的相對目錄路徑"},
                 "include_pattern": {"type": "str", "required": False, "default": "", "description": "檔案過濾 pattern (如 *.py)"},
+                "fixed_strings": {"type": "bool", "required": False, "default": False, "description": "設為 true 時作為字面字串查詢"},
+                "case_sensitive": {"type": "bool", "required": False, "default": None, "description": "大小寫敏感度"},
+                "context_lines": {"type": "int", "required": False, "default": 2, "description": "匹配行前後上下文行數 (預設 2)"},
+                "offset": {"type": "int", "required": False, "default": 0, "description": "分頁位移偏移量"},
                 "max_results": {"type": "int", "required": False, "default": 50, "description": "最多回傳結果數"}
             }
         },
@@ -309,8 +299,7 @@ TOOL_CATALOG = {
             "name": "set_active_project",
             "description": "釘選當前工作子專案路徑，後續所有指令與工具邊界將自動切換至該專案下 (避免路徑漂移與跨專案誤操作)",
             "parameters": {
-                "project_path": {"type": "str", "required": False, "description": "子專案相對目錄 (傳入空字串或 '.' 則重設回工作區根目錄，亦支援別名 'project')"},
-                "project": {"type": "str", "required": False, "description": "project_path 的別名參數"}
+                "project_path": {"type": "str", "required": True, "description": "子專案相對目錄 (傳入空字串或 '.' 則重設回工作區根目錄)"}
             }
         },
         {

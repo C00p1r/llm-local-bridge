@@ -131,11 +131,16 @@ def read_workspace_file(path: str, start_line: Optional[int] = None, end_line: O
         formatted_output = [f"{i:>4} | {line}" for i, line in enumerate(selected_lines, start=s_idx)]
         raw_selected_text = "\n".join(selected_lines)
 
+        res_output = "\n".join(formatted_output)
+        # 軟性阻力引導 (Soft Friction)：當全檔讀取超過 120 行且未設定行號區間時，提醒使用精準搜尋工具
+        if start_line is None and end_line is None and total_lines > 120:
+            res_output += f"\n\n[導航提醒] 該檔案共 {total_lines} 行。若您正在尋找特定函式/類別，請使用 find_definition(symbol='...')；若尋找特定邏輯或字串，請使用 grep_code(query='...')。"
+
         return {
             "status": "success",
             "total_lines": total_lines,
             "range": [s_idx, e_idx],
-            "output": "\n".join(formatted_output),
+            "output": res_output,
             "raw_content": raw_selected_text,
             "exit_code": 0
         }
