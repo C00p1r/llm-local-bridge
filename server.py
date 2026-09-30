@@ -78,10 +78,8 @@ async def get_context(token: str = Depends(verify_token)):
 
 @app.get("/events/poll")
 async def poll_events(token: str = Depends(verify_token)):
-    import sandbox
-    events = []
-    if hasattr(sandbox, "pop_pending_events"):
-        events = sandbox.pop_pending_events()
+    import job_manager
+    events = job_manager.get_and_clear_events()
     return {
         "status": "success",
         "events": events
