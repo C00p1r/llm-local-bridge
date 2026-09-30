@@ -1,6 +1,11 @@
 SUPPORTED_TOOLS = [
     "execute_command",
     "run_script",
+    "execute_async",
+    "poll_job_status",
+    "kill_job",
+    "list_jobs",
+    "file_read",
     "file_read",
     "file_write",
     "file_replace",
@@ -87,6 +92,38 @@ TOOL_CATALOG = {
                 "code": {"type": "str", "required": True, "description": "腳本程式碼內容"},
                 "language": {"type": "str", "required": False, "default": "python", "description": "支援 python, bash/sh, javascript/node"},
                 "timeout": {"type": "int", "required": False, "default": 30, "description": "逾時秒數"}
+            }
+        },
+        {
+            "name": "execute_async",
+            "description": "非同步背景執行命令或腳本，立即回傳 job_id 以供後續追蹤",
+            "parameters": {
+                "command": {"type": "str", "required": True, "description": "要執行的 Shell 指令或腳本"},
+                "job_name": {"type": "str", "required": False, "description": "自訂任務標籤名稱"},
+                "log_file": {"type": "str", "required": False, "description": "日誌輸出檔案路徑"},
+                "timeout": {"type": "int", "required": False, "description": "任務超時限制 (秒)"},
+                "notify_on_complete": {"type": "bool", "required": False, "default": True, "description": "任務完成時是否觸發事件通知"}
+            }
+        },
+        {
+            "name": "poll_job_status",
+            "description": "輪詢指定背景任務狀態、執行耗時與讀取最新 stdout/stderr 日誌",
+            "parameters": {
+                "job_id": {"type": "str", "required": True, "description": "背景任務 ID"}
+            }
+        },
+        {
+            "name": "kill_job",
+            "description": "強制終止正在執行的背景任務並清理相關資源",
+            "parameters": {
+                "job_id": {"type": "str", "required": True, "description": "背景任務 ID"}
+            }
+        },
+        {
+            "name": "list_jobs",
+            "description": "列出當前系統中所有的背景任務清單與狀態資訊",
+            "parameters": {
+                "limit": {"type": "int", "required": False, "default": 10, "description": "最大取得筆數"}
             }
         },
         {
