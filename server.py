@@ -76,6 +76,17 @@ async def get_context(token: str = Depends(verify_token)):
         "context_prompt": prompt_text
     }
 
+@app.get("/events/poll")
+async def poll_events(token: str = Depends(verify_token)):
+    import sandbox
+    events = []
+    if hasattr(sandbox, "pop_pending_events"):
+        events = sandbox.pop_pending_events()
+    return {
+        "status": "success",
+        "events": events
+    }
+
 # 註冊模組化工具 handler
 register_all_handlers()
 
