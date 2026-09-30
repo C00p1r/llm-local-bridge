@@ -253,7 +253,8 @@ def start_async_job(command: str, job_name: Optional[str] = None, log_file: Opti
     thread.start()
 
     return {
-        "status": "STARTED",
+        "status": "success",
+        "job_status": "STARTED",
         "job_id": job_id,
         "job_name": name,
         "container_name": container_name,

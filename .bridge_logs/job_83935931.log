@@ -1,0 +1,6 @@
+[Bridge Async Job: job_83935931 | Name: test_batch_fix]
+Command: python -c "import time; print('Testing batch execution'); time.sleep(1)"
+Started at: 2026-09-30 15:02:29
+Timeout: None
+--------------------------------------------------
+Testing batch execution
