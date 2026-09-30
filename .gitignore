@@ -1,7 +1,16 @@
 .env
+
 .venv
+
 .venv/*
+
 workspace
+
 workspace/*
+
 __pycache__
+
 __pycache__/*
+
+.bridge_logs/
+.bridge/
