@@ -4,6 +4,7 @@ import sandbox
 import file_manager
 import executor
 import memory_manager
+import job_manager
 
 def register_core_handlers():
     @register_tool("execute_command")
@@ -129,3 +130,33 @@ def register_core_handlers():
             "tools": TOOL_CATALOG,
             "exit_code": 0
         }
+
+    @register_tool("execute_async")
+    async def _handle_execute_async(params: Dict[str, Any]):
+        cmd = params.get("command", "").strip()
+        job_name = params.get("job_name")
+        log_file = params.get("log_file")
+        timeout = params.get("timeout")
+        notify = params.get("notify_on_complete", True)
+        return job_manager.start_async_job(
+            command=cmd,
+            job_name=job_name,
+            log_file=log_file,
+            notify_on_complete=notify,
+            timeout=timeout
+        )
+
+    @register_tool("poll_job_status")
+    async def _handle_poll_job_status(params: Dict[str, Any]):
+        job_id = params.get("job_id", "")
+        return job_manager.poll_job(job_id)
+
+    @register_tool("kill_job")
+    async def _handle_kill_job(params: Dict[str, Any]):
+        job_id = params.get("job_id", "")
+        return job_manager.stop_async_job(job_id)
+
+    @register_tool("list_jobs")
+    async def _handle_list_jobs(params: Dict[str, Any]):
+        limit = params.get("limit", 10)
+        return job_manager.list_async_jobs(limit=limit)
