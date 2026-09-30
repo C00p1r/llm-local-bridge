@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         LLM Local Bridge Agent (v4.15.0 - Scoped Project Pinning)
+// @name         LLM Local Bridge Agent (v4.17.0 - WebComponent DOM Traversal Fix)
 // @namespace    https://local.bridge/
-// @version      4.15.0
+// @version      4.17.0
 // @description  LLM Local Bridge supporting ChatGPT, Gemini, and DeepSeek Web
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
@@ -29,7 +29,7 @@
     window.__llm_local_bridge_loaded__ = true;
 
     console.log(
-        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.15.0 (Multi-Platform: ChatGPT / Gemini / DeepSeek)',
+        '%c[LLM Local Bridge] Tampermonkey 腳本已載入 v4.17.0 (Multi-Platform: ChatGPT / Gemini / DeepSeek)',
         'color:#22c55e;font-weight:bold;font-size:14px;'
     );
 
@@ -123,30 +123,68 @@
      "parameters": {"category": "git"}
    }
 
+8. execute_async: 背景非同步執行長耗時指令 (如大量樣本回測、參數搜尋)，立即回傳 job_id 與日誌路徑。
+   參數:
+   - command (string, 必填): 要執行的 Shell 指令。
+   - job_name (string, 選填): 工作識別名稱。
+   - log_file (string, 選填): 自訂日誌輸出路徑。
+   - timeout (int, 選填): 任務逾時限制秒數 (超時自動終止容器並標記 TIMEOUT)。
+   - notify_on_complete (bool, 選填): 工作完成時是否自動注入通知 (預設 true)。
+   範例:
+   {
+     "tool": "execute_async",
+     "parameters": {"command": "python main.py --samples 200", "job_name": "broad_search", "timeout": 3600}
+   }
+
+9. poll_job_status: 主動查詢背景任務狀態、累計耗時 (elapsed_time) 與最新輸出日誌尾端內容。
+   參數:
+   - job_id (string, 必填): 工作 ID。
+   範例:
+   {
+     "tool": "poll_job_status",
+     "parameters": {"job_id": "job_12345"}
+   }
+
+10. kill_job: 強制中斷並清理指定背景非同步執行的任務與沙盒容器。
+    參數:
+    - job_id (string, 必填): 欲終止的 job_id。
+    範例:
+    {
+      "tool": "kill_job",
+      "parameters": {"job_id": "job_12345"}
+    }
+
+11. list_jobs: 列出所有背景非同步任務清單、各任務運行狀態與累計耗時。
+    參數:
+    - limit (int, 選填): 最多回傳比數 (預設 10)。
+    範例:
+    {
+      "tool": "list_jobs",
+      "parameters": {"limit": 10}
+    }
+
 ### 二、 進階工具分類索引 (Advanced Tools - 請透過 list_tool 查詢詳細參數)
 
-- **search 群組 (專案感知與搜尋)**:
-  - \`grep_code\`: 精準程式碼關鍵字或正則檢索（支援上下文行數 context_lines，定位未知邏輯與字串的首選工具）。
-  - \`find_definition\`: 精確定位函式、類別、方法等宣告定義處。
-  - \`search_codebase\`: 全專案全文檢索（grep_code 之相容別名）。
+**search 群組 (專案感知與搜尋)**:
   - \`list_dir\`: 結構化掃描目錄樹。
   - \`get_outline\`: AST 提取 Python 檔案符號大綱。
+  - \`search_codebase\`: 全專案全文關鍵字或正則檢索。
   - \`find_references\`: 尋找符號定義與調用點。
 
-- **git 群組 (版本控制與協同)**:
+**git 群組 (版本控制與協同)**:
   - \`git_clone\`, \`git_pull\`, \`git_push\`, \`git_diff\`, \`git_status\`, \`git_log\`, \`git_blame\`, \`git_branch\`, \`git_checkout\`, \`git_clean\`
 
-- **system 群組 (系統與除錯)**:
+**system 群組 (系統與除錯)**:
   - \`set_active_project\`: 動態釘選作用域專案目錄（路徑邊界與 Docker 自動對齊）。
   - \`get_workspace_state\`: 取得當前工作區狀態與釘選目錄資訊。
   - \`capture_memory\`: 捕捉專案架構快照。
 
 ### 三、 執行與呼叫原則
-- **專案隔離原則**：若工作區包含多個專案或子目錄，優先呼叫 \`set_active_project(project="...")\` 釘選當前專案；釘選後所有檔案操作、程式碼檢索與 Docker 容器工作目錄皆會自動限制於該子目錄，避免跨專案污染與路徑越界。
+- 專案隔離原則：若工作區包含多個專案或子目錄，優先呼叫 \`set_active_project(project="...")\` 釘選當前專案；釘選後所有檔案操作、程式碼檢索與 Docker 容器工作目錄皆會自動限制於該子目錄，避免跨專案污染與路徑越界。
 - 修改現有檔案時一律優先使用 file_replace (或 patch_and_test)。
 - 僅在建立全新檔案時使用 file_write。
 - 若需使用進階工具的詳細參數，請先呼叫 \`list_tool(category="...")\` 查詢。
-- **高效連續批次呼叫（重要）**：單次對話輸出應盡可能將相互關聯的步驟打包為批次陣列（平均單次執行指令數應大於 2）。
+- 高效連續批次呼叫（重要）：單次對話輸出應盡可能將相互關聯的步驟打包為批次陣列（平均單次執行指令數應大於 2）。
 - 操作環境時，僅輸出 \`\`\`tool_call 區塊，等待系統回傳 [TOOL_RESULT] 後再接續分析。
 
 ### 四、 批次呼叫 (Batch Array) 格式
@@ -185,6 +223,68 @@
     let lastSeenToolText = '';
     let stableToolCount = 0;
     let isProgrammaticSubmit = false;
+
+    function unescapeJsonString(str) {
+        return str
+            .replace(/\\n/g, '\n')
+            .replace(/\\r/g, '\r')
+            .replace(/\\t/g, '\t')
+            .replace(/\\"/g, '"')
+            .replace(/\\\\/g, '\\');
+    }
+
+    function parseMultiLineJson(rawText) {
+        if (!rawText) return null;
+        let cleaned = rawText.trim();
+        cleaned = cleaned.replace(/^```[a-zA-Z0-9_-]*\s*/i, '').replace(/```\s*$/i, '').trim();
+
+        try {
+            const parsed = JSON.parse(cleaned);
+            if (isValidToolPayload(parsed)) return parsed;
+        } catch (_) {}
+
+        const firstBracket = cleaned.indexOf('[');
+        const lastBracket = cleaned.lastIndexOf(']');
+        if (firstBracket !== -1 && lastBracket > firstBracket) {
+            try {
+                const sub = cleaned.substring(firstBracket, lastBracket + 1);
+                const parsed = JSON.parse(sub);
+                if (isValidToolPayload(parsed)) return parsed;
+            } catch (_) {}
+        }
+
+        const firstBrace = cleaned.indexOf('{');
+        const lastBrace = cleaned.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace > firstBrace) {
+            try {
+                const sub = cleaned.substring(firstBrace, lastBrace + 1);
+                const parsed = JSON.parse(sub);
+                if (isValidToolPayload(parsed)) return parsed;
+            } catch (_) {}
+        }
+
+        try {
+            const toolMatch = cleaned.match(/"tool"\s*:\s*"([a-zA-Z0-9_-]+)"/);
+            if (toolMatch) {
+                const tool = toolMatch[1];
+                const paramsMatch = cleaned.match(/"parameters"\s*:\s*(\{[\s\S]*?\})/);
+                let parameters = {};
+                if (paramsMatch) {
+                    try {
+                        parameters = JSON.parse(paramsMatch[1]);
+                    } catch (_) {
+                        try {
+                            parameters = JSON.parse(unescapeJsonString(paramsMatch[1]));
+                        } catch (__) {}
+                    }
+                }
+                const reconstructed = { tool, parameters };
+                if (isValidToolPayload(reconstructed)) return reconstructed;
+            }
+        } catch (_) {}
+
+        return null;
+    }
 
     function getPlatform() {
         const host = location.hostname;
@@ -253,7 +353,7 @@
         });
 
         badge.addEventListener('click', () => {
-            const choice = prompt('請選擇操作：\n1. 更新 Session Token\n2. 重設調用計數器\n輸入序號 (1 或 2)：', '1');
+            const choice = prompt('請選擇操作：\\n1. 更新 Session Token\\n2. 重設調用計數器\\n輸入序號 (1 或 2)：', '1');
             if (choice === '1') {
                 const newToken = prompt('請輸入新的 Session Token:', sessionToken);
                 if (newToken !== null) {
@@ -352,6 +452,35 @@
         });
     }
 
+    function pollEventsFromBackend() {
+        return new Promise((resolve) => {
+            if (!sessionToken) return resolve([]);
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: `${BASE_URL}/events/poll`,
+                headers: {
+                    'Authorization': `Bearer ${sessionToken}`
+                },
+                timeout: 3000,
+                onload: function (res) {
+                    if (res.status === 200) {
+                        try {
+                            const data = JSON.parse(res.responseText);
+                            resolve(data.events || []);
+                        } catch (e) {
+                            resolve([]);
+                        }
+                    } else {
+                        resolve([]);
+                    }
+                },
+                onerror: function () {
+                    resolve([]);
+                }
+            });
+        });
+    }
+
     function fetchContextPrompt() {
         return new Promise((resolve) => {
             if (!sessionToken) {
@@ -400,9 +529,8 @@
             if (latestMsg && latestMsg.closest('[class*="streaming"], [class*="generating"], [class*="loading"]')) return true;
             return false;
         }
-        // Gemini
-        const geminiStop = document.querySelector('button[aria-label*="Stop"], button[aria-label*="停止"]');
-        return Boolean(geminiStop && geminiStop.offsetParent !== null && !geminiStop.disabled);
+        const geminiStop = document.querySelector('button[aria-label*="Stop"], button[aria-label*="停止"], button[mattooltip*="停止"], .stop-button');
+        return Boolean(geminiStop && (geminiStop.offsetWidth > 0 || geminiStop.offsetHeight > 0) && !geminiStop.disabled);
     }
 
     function getInputElement() {
@@ -416,7 +544,6 @@
         if (platform === 'deepseek') {
             return document.querySelector('#chat-input, textarea[placeholder*="DeepSeek"], textarea[placeholder*="输入"], textarea');
         }
-        // Gemini: 深入 rich-textarea 內部的 contenteditable
         return document.querySelector('rich-textarea .ql-editor, rich-textarea div[contenteditable="true"], .ql-editor, div[contenteditable="true"]');
     }
 
@@ -462,15 +589,41 @@
             return null;
         }
 
-        // Gemini: 精確鎖定包含送出圖示或特定屬性的按鈕
-        const geminiBtn = document.querySelector(
+        if (inputEl) {
+            const inputContainer = inputEl.closest('.input-area, [class*="input-box"], [class*="input-container"], [class*="bottom-container"], form') ||
+                                   inputEl.closest('rich-textarea')?.parentElement;
+            if (inputContainer) {
+                const directSend = inputContainer.querySelector(
+                    'button.send-button, .send-button-container button, ' +
+                    'button[aria-label*="傳送"], button[aria-label*="發送"], button[aria-label*="Send"], ' +
+                    'button:has(mat-icon[fonticon*="send"]), button:has(span[data-icon="send"])'
+                );
+                if (directSend && !directSend.closest('bard-sidenav, [class*="side"], [class*="history"], nav, [role="navigation"]')) {
+                    return directSend;
+                }
+            }
+        }
+
+        const mainArea = document.querySelector('chat-window, main, [role="main"], .chat-history, [class*="main-container"]') || document.body;
+        const geminiCandidates = Array.from(mainArea.querySelectorAll(
+            'button.send-button, .send-button-container button, ' +
             'button[aria-label*="傳送"], button[aria-label*="發送"], button[aria-label*="Send"], ' +
-            '.send-button-container button, button.send-button, ' +
-            'rich-textarea ~ * button[aria-label*="提示"], ' +
             'button:has(mat-icon[fonticon*="send"]), button:has(span[data-icon="send"])'
-        );
-        return geminiBtn;
+        ));
+
+        for (const btn of geminiCandidates) {
+            if (btn.closest('bard-sidenav, [class*="sidebar"], [class*="side-nav"], [class*="conversation"], nav, [role="navigation"], [class*="history"], [class*="menu"], [aria-haspopup="menu"]')) {
+                continue;
+            }
+            const label = (btn.getAttribute('aria-label') || btn.title || '').toLowerCase();
+            if (label.includes('more') || label.includes('更多') || label.includes('選單') || label.includes('menu')) {
+                continue;
+            }
+            return btn;
+        }
+        return null;
     }
+
     async function submitToLLM(text) {
         const inputEl = getInputElement();
         if (!inputEl) {
@@ -485,7 +638,6 @@
             inputEl.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
             inputEl.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
         } else {
-            // 1. 純 DOM 操作：逐行建立 <p> 節點，嚴禁使用 innerHTML 以免被 Trusted Types 攔截
             const lines = text.split('\n');
             const pElements = [];
 
@@ -494,12 +646,11 @@
                 if (line.length === 0) {
                     p.appendChild(document.createElement('br'));
                 } else {
-                    p.textContent = line; // textContent 不受 TrustedHTML 限制
+                    p.textContent = line;
                 }
                 pElements.push(p);
             }
 
-            // 2. 清空現有子節點並插入新的段落結構
             while (inputEl.firstChild) {
                 inputEl.removeChild(inputEl.firstChild);
             }
@@ -507,7 +658,6 @@
                 inputEl.appendChild(p);
             }
 
-            // 3. 移動選取範圍（Selection）至末尾，模擬真實鍵入完成狀態
             const selection = window.getSelection();
             const range = document.createRange();
             range.selectNodeContents(inputEl);
@@ -515,19 +665,16 @@
             selection.removeAllRanges();
             selection.addRange(range);
 
-            // 4. 派發完整的合成輸入事件
             inputEl.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
             inputEl.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
             inputEl.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, composed: true, inputType: 'insertText' }));
             inputEl.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, composed: true, key: 'End' }));
         }
 
-        // 5. 文字填入後之緩衝延遲（確保前端狀態與富文字框完成同步）
         if (PRE_SUBMIT_DELAY_MS > 0) {
             await new Promise((r) => setTimeout(r, PRE_SUBMIT_DELAY_MS));
         }
 
-        // 6. 輪詢等待送出按鈕解鎖（最多 25 次，共 2.5 秒）
         let sendBtn = null;
         for (let i = 0; i < 25; i++) {
             await new Promise((r) => setTimeout(r, 100));
@@ -538,7 +685,6 @@
             }
         }
 
-        // 7. 送出點擊
         isProgrammaticSubmit = true;
         try {
             if (sendBtn) {
@@ -555,75 +701,33 @@
         return true;
     }
 
-    function parseMultiLineJson(rawText) {
-        const blockMatch = rawText.match(/```(?:tool_call|bridge):([a-zA-Z0-9_-]+)\s*\n([\s\S]*?)\n```/);
-        if (blockMatch) {
-            const action = blockMatch[1];
-            const rawBody = blockMatch[2].trim();
-            if (action === 'execute_command') {
-                return { tool: 'execute_command', parameters: { command: rawBody } };
-            }
-            if (action === 'file_write' || action === 'write_file') {
-                const firstNewline = rawBody.indexOf('\n');
-                const path = rawBody.substring(0, firstNewline).replace(/^path:\s*/i, '').trim();
-                const content = rawBody.substring(firstNewline + 1);
-                return { tool: 'file_write', parameters: { path, content } };
-            }
-            if (action === 'run_script') {
-                return { tool: 'run_script', parameters: { code: rawBody, language: 'python' } };
-            }
-        }
-
-        let cleanText = rawText.trim();
-        cleanText = cleanText.replace(/^```[a-zA-Z0-9_-]*\s*/i, '').replace(/```$/i, '').trim();
-
-        if (cleanText.startsWith('"') && cleanText.endsWith('"')) {
-            cleanText = cleanText.slice(1, -1).trim();
-        }
-
-        try {
-            const parsed = JSON.parse(cleanText);
-            if (isValidToolPayload(parsed)) return parsed;
-        } catch (e) {}
-
-        const firstBracket = cleanText.indexOf('[');
-        const lastBracket = cleanText.lastIndexOf(']');
-        const firstBrace = cleanText.indexOf('{');
-        const lastBrace = cleanText.lastIndexOf('}');
-
-        if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
-            const candidateArr = cleanText.substring(firstBracket, lastBracket + 1);
-            try {
-                const parsedArr = JSON.parse(candidateArr);
-                if (isValidToolPayload(parsedArr)) return parsedArr;
-            } catch (e) {}
-        }
-
-        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-            const candidateObj = cleanText.substring(firstBrace, lastBrace + 1);
-            try {
-                const parsedObj = JSON.parse(candidateObj);
-                if (isValidToolPayload(parsedObj)) return parsedObj;
-            } catch (e) {}
-
-            try {
-                const sanitized = candidateObj.replace(/"(?:[^"\\]|\\.)*"/gs, (match) => {
-                    return match.replace(/\r/g, '\\r').replace(/\n/g, '\\n').replace(/\t/g, '\\t');
-                });
-                const parsedSanitized = JSON.parse(sanitized);
-                if (isValidToolPayload(parsedSanitized)) return parsedSanitized;
-            } catch (e) {}
-        }
-
-        return null;
-    }
-
     function isValidToolPayload(payload) {
         if (!payload) return false;
         if (Array.isArray(payload)) {
             return payload.length > 0 && payload.every(item => item && item.tool && typeof item.tool === 'string');
         }
         return Boolean(payload.tool && typeof payload.tool === 'string');
+    }
+
+    // --- 關鍵修復：DOM 容器級去重與精確 code 元素比對 ---
+    function markAsExecuted(el) {
+        if (!el) return;
+        el.dataset.bridgeExecuted = 'true';
+        const codeBlockContainer = el.closest('code-block, pre, div.code-block');
+        if (codeBlockContainer) {
+            codeBlockContainer.dataset.bridgeExecuted = 'true';
+            codeBlockContainer.querySelectorAll('code, pre').forEach(child => {
+                child.dataset.bridgeExecuted = 'true';
+            });
+        }
+    }
+
+    function isAlreadyExecuted(el) {
+        if (!el) return false;
+        if (el.dataset.bridgeExecuted === 'true') return true;
+        const codeBlockContainer = el.closest('code-block, pre, div.code-block');
+        if (codeBlockContainer && codeBlockContainer.dataset.bridgeExecuted === 'true') return true;
+        return false;
     }
 
     function getNextToolCall(peek = false) {
@@ -639,45 +743,48 @@
             const dsBlocks = Array.from(document.querySelectorAll('.ds-message, .ds-markdown'));
             assistantMessages = dsBlocks.filter(el => !el.closest('.ds-message--user, [data-is-user="true"]') && el.offsetParent !== null);
         } else {
-            // Gemini
-            const geminiBlocks = Array.from(document.querySelectorAll('message-content, model-response'));
+            // Gemini: 精確鎖定助理回覆
+            const geminiBlocks = Array.from(document.querySelectorAll('message-content, model-response, [data-test-id="model-response"]'));
             assistantMessages = geminiBlocks.filter(el => {
                 const isUser = el.closest('.user-query, .user-query-container, [data-message-author-role="user"]');
-                return !isUser && el.offsetParent !== null;
+                return !isUser && (el.offsetWidth > 0 || el.offsetHeight > 0 || el.offsetParent !== null);
             });
         }
 
         if (!assistantMessages.length) return null;
 
         const latestMsg = assistantMessages[assistantMessages.length - 1];
-
         if (latestMsg.closest('.user-query, [data-message-author-role="user"], .ds-message--user')) {
             return null;
         }
 
-        const codeBlocks = latestMsg.querySelectorAll('code[data-test-id="code-content"], pre code, pre');
+        // 精確選取葉子節點 code；若無 code 則回退到獨立的 pre，杜絕 pre 與 code 雙重覆蓋
+        let codeElements = Array.from(latestMsg.querySelectorAll('code[data-test-id="code-content"], pre code, code'));
+        if (codeElements.length === 0) {
+            codeElements = Array.from(latestMsg.querySelectorAll('pre'));
+        }
 
-        for (const el of codeBlocks) {
-            if (el.dataset.bridgeExecuted === 'true') continue;
+        for (const el of codeElements) {
+            if (isAlreadyExecuted(el)) continue;
 
             let text = (el.innerText || el.textContent || '').trim();
             if (!text.includes('"tool"')) continue;
 
             if (/^(function|const|let|var|import|\/\/|\/\*)/.test(text) || text.includes('GM_xmlhttpRequest')) {
-                el.dataset.bridgeExecuted = 'true';
+                markAsExecuted(el);
                 continue;
             }
 
             const parsed = parseMultiLineJson(text);
             if (parsed) {
                 if (peek) return { parsed, element: el, peeked: true };
-                el.dataset.bridgeExecuted = 'true';
+                markAsExecuted(el);
                 const logName = Array.isArray(parsed) ? `Batch (${parsed.length} items)` : parsed.tool;
                 console.log('%c[Bridge] ✓ 成功解析 Tool Call', 'color:#38bdf8;font-weight:bold;', logName, parsed);
                 return { parsed, element: el };
             } else if (text.startsWith('[') || text.startsWith('{') || text.includes('tool_call')) {
                 if (peek) return { syntaxError: true, element: el, peeked: true };
-                el.dataset.bridgeExecuted = 'true';
+                markAsExecuted(el);
                 console.warn('[Bridge] ⚠️ 偵測到損壞的 Tool Call JSON 語法');
                 return {
                     syntaxError: true,
@@ -689,10 +796,54 @@
         return null;
     }
 
+    const pendingJobEvents = [];
+    let isEventFlushing = false;
+
+    async function flushPendingEvents() {
+        if (isEventFlushing || isExecuting || isStreaming() || pendingJobEvents.length === 0) return;
+        const now = Date.now();
+        if (now - lastExecutionTime < RESULT_COOLDOWN_MS) return;
+
+        isEventFlushing = true;
+        isExecuting = true;
+        try {
+            while (pendingJobEvents.length > 0 && !isStreaming()) {
+                const ev = pendingJobEvents.shift();
+                console.log('[Bridge] 正在將背景事件平滑注入對話:', ev);
+                const notifText = `[BACKGROUND_JOB_EVENT]\n\`\`\`json\n${JSON.stringify(ev, null, 2)}\n\`\`\``;
+                await submitToLLM(notifText);
+                lastExecutionTime = Date.now();
+                await new Promise(r => setTimeout(r, 1500));
+            }
+        } catch (err) {
+            console.error('[Bridge] 推送背景事件至對話失敗:', err);
+        } finally {
+            isExecuting = false;
+            isEventFlushing = false;
+        }
+    }
+
+    // 獨立常態輪詢定時器 (每 2 秒)
+    setInterval(async () => {
+        try {
+            const events = await pollEventsFromBackend();
+            if (events && events.length > 0) {
+                console.log(`[Bridge] 輪詢抓取到 ${events.length} 個背景事件，加入待處理佇列`);
+                pendingJobEvents.push(...events);
+            }
+        } catch (err) {
+            console.error('[Bridge] 獨立輪詢背景事件異常:', err);
+        }
+        await flushPendingEvents();
+    }, 2000);
+
+    // 主偵測循環
     setInterval(async () => {
         const now = Date.now();
         if (isExecuting || isStreaming() || (now - lastExecutionTime < RESULT_COOLDOWN_MS)) return;
         createMetricsUI();
+        await flushPendingEvents();
+        if (isExecuting) return;
 
         const peekTarget = getNextToolCall(true);
         if (!peekTarget) {
